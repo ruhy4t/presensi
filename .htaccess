@@ -1,0 +1,17 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Redirect Trailing Slashes If Not A Folder...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Handle Front Controller...
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+
+    # Route all requests to public/index.php
+    RewriteCond %{DOCUMENT_ROOT}/public/%{REQUEST_URI} !-f
+    RewriteCond %{DOCUMENT_ROOT}/public/%{REQUEST_URI} !-d
+    RewriteRule ^(.*)$ public/index.php [L]
+</IfModule>

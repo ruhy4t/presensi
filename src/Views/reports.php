@@ -1,0 +1,115 @@
+<?php
+require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
+
+$user = AuthMiddleware::user();
+
+function formatTanggalIndoReport($tgl) {
+    if (!$tgl || $tgl === '-') return '-';
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $tgl)) {
+        $hari_inggris = date('l', strtotime($tgl));
+        $hari_indo = ['Monday'=>'Senin', 'Tuesday'=>'Selasa', 'Wednesday'=>'Rabu', 'Thursday'=>'Kamis', 'Friday'=>'Jumat', 'Saturday'=>'Sabtu', 'Sunday'=>'Minggu'];
+        $hari = $hari_indo[$hari_inggris] ?? '';
+        
+        $bulan = ['01'=>'Januari','02'=>'Februari','03'=>'Maret','04'=>'April','05'=>'Mei','06'=>'Juni','07'=>'Juli','08'=>'Agustus','09'=>'September','10'=>'Oktober','11'=>'November','12'=>'Desember'];
+        $parts = explode('-', $tgl);
+        return $hari . ', ' . $parts[2] . ' ' . $bulan[$parts[1]] . ' ' . $parts[0];
+    }
+    return htmlspecialchars($tgl);
+}
+?>
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laporan Kegiatan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+</head>
+
+<body class="bg-gray-50 p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <div class="flex items-center justify-between mb-8">
+            <h1 class="text-2xl font-bold text-gray-800"><i class="bi bi-file-earmark-pdf-fill text-red-500 mr-2"></i> Laporan Kegiatan</h1>
+            <a href="/dashboard" class="text-blue-600 hover:underline"><i class="bi bi-arrow-left"></i> Kembali ke Dashboard</a>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left whitespace-nowrap">
+                    <thead class="bg-gray-50 border-b">
+                        <tr>
+                            <th class="px-6 py-4 text-sm font-semibold text-gray-600">Nama Kegiatan</th>
+                            <th class="px-6 py-4 text-sm font-semibold text-gray-600">Pelaksanaan</th>
+                            <th class="px-6 py-4 text-sm font-semibold text-gray-600">Peserta</th>
+                            <?php if ($user['role'] === 'admin'): ?>
+                                <th class="px-6 py-4 text-sm font-semibold text-gray-600">Pembuat</th>
+                            <?php endif; ?>
+                            <th class="px-6 py-4 text-sm font-semibold text-gray-600 text-center">Aksi Laporan</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <?php if (empty($kegiatanList)): ?>
+                            <tr>
+                                <td colspan="<?= $user['role'] === 'admin' ? 5 : 4 ?>" class="px-6 py-12 text-center text-gray-500">
+                                    <i class="bi bi-inbox text-3xl block mb-2 text-gray-300"></i>
+                                    Belum ada data kegiatan.
+                                </td>
+                            </tr>
+                        <?php endif; ?>
+                        
+                        <?php foreach ($kegiatanList as $k): ?>
+                            <tr class="hover:bg-gray-50 transition-colors">
+                                <td class="px-6 py-4">
+                                    <div class="font-medium text-gray-900"><?= htmlspecialchars($k['nama_kegiatan']) ?></div>
+                                    <div class="text-xs text-gray-500 mt-1">Status: 
+                                        <span class="<?= $k['status'] === 'Aktif' ? 'text-green-600' : 'text-gray-600' ?> font-semibold"><?= $k['status'] ?></span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="text-sm text-gray-800"><i class="bi bi-calendar-event mr-1 text-gray-400"></i> <?= formatTanggalIndoReport($k['tanggal_pelaksanaan'] ?? '-') ?></div>
+                                    <div class="text-xs text-gray-500 mt-1"><i class="bi bi-geo-alt mr-1 text-gray-400"></i> <?= htmlspecialchars($k['tempat_pelaksanaan'] ?? '-') ?></div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                        <?= number_format($k['attendance_count'] ?? 0) ?> Hadir
+                                    </span>
+                                </td>
+                                <?php if ($user['role'] === 'admin'): ?>
+                                    <td class="px-6 py-4 text-sm text-gray-600">
+                                        <i class="bi bi-person mr-1 text-gray-400"></i> <?= htmlspecialchars($k['creator_name']) ?>
+                                    </td>
+                                <?php endif; ?>
+                                <td class="px-6 py-4 text-center">
+                                    <div class="flex items-center justify-center gap-2">
+                                        <a href="/registrations?id=<?= $k['id'] ?>" title="Peserta & Token"
+                                           class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors">
+                                            <i class="bi bi-person-lines-fill"></i>
+                                        </a>
+                                        <a href="/report/print?id=<?= $k['id'] ?>&source=laporan" target="_blank" title="Cetak / Download PDF"
+                                           class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
+                                            <i class="bi bi-file-pdf-fill"></i>
+                                        </a>
+                                        <a href="/report/export?id=<?= $k['id'] ?>&format=xls" title="Export Excel"
+                                           class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors">
+                                            <i class="bi bi-file-earmark-excel-fill"></i>
+                                        </a>
+                                        <a href="/report/export?id=<?= $k['id'] ?>&format=csv" title="Export CSV"
+                                           class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
+                                            <i class="bi bi-filetype-csv"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>

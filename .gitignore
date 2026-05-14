@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+
+*.log
+*.tmp
+*.bak
+
+public/uploads/*
+!public/uploads/.htaccess
+!public/uploads/.gitkeep
+
+.DS_Store
+Thumbs.db
+

@@ -1,0 +1,41 @@
+CREATE TABLE IF NOT EXISTS participants (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    nama_lengkap VARCHAR(200) NOT NULL,
+    tempat_lahir VARCHAR(100) NOT NULL,
+    tanggal_lahir DATE NOT NULL,
+    pangkat_gol VARCHAR(100) NULL,
+    nip VARCHAR(50) NULL,
+    nik VARCHAR(30) NOT NULL,
+    jabatan VARCHAR(150) NOT NULL,
+    unit_kerja VARCHAR(200) NOT NULL,
+    alamat_unit_kerja TEXT NOT NULL,
+    telepon_unit_kerja VARCHAR(30) NULL,
+    alamat_rumah TEXT NOT NULL,
+    hp VARCHAR(30) NOT NULL,
+    email VARCHAR(150) NOT NULL,
+    signature_file VARCHAR(255) NOT NULL,
+    biodata_filled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_participants_nik (nik)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS participant_registrations (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    kegiatan_id INT NOT NULL,
+    participant_id BIGINT UNSIGNED NOT NULL,
+    token_code VARCHAR(20) NOT NULL,
+    status ENUM('registered','attended') NOT NULL DEFAULT 'registered',
+    biodata_submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    attendance_confirmed_at DATETIME NULL,
+    token_generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    token_used_at DATETIME NULL,
+    created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_registration_kegiatan_participant (kegiatan_id, participant_id),
+    UNIQUE KEY uq_registration_kegiatan_token (kegiatan_id, token_code),
+    KEY idx_registration_participant (participant_id),
+    KEY idx_registration_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
