@@ -83,7 +83,7 @@ class KegiatanStatusService
 
     public static function manualFlagForStatus($status)
     {
-        return $status === 'Non-Aktif' ? 1 : 0;
+        return in_array($status, ['Aktif', 'Non-Aktif'], true) ? 1 : 0;
     }
 
     public static function automaticStatusForDate($tanggalPelaksanaan)

@@ -131,6 +131,10 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
             margin-top: 20px;
         }
 
+        .attendance-table {
+            table-layout: fixed;
+        }
+
         th,
         td {
             border: 1px solid #000;
@@ -143,18 +147,36 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
             text-align: center;
         }
 
-        .col-no {
+        .attendance-table .col-no {
             width: 5%;
             text-align: center;
         }
 
-        .col-ttd {
-            width: 20%;
+        .col-nama {
+            width: 28%;
+        }
+
+        .col-instansi {
+            width: 29%;
+        }
+
+        .col-jabatan {
+            width: 28%;
+        }
+
+        .attendance-table .col-ttd {
+            width: 10%;
             text-align: center;
+            padding-left: 2px;
+            padding-right: 2px;
         }
 
         .signature-img {
-            height: 40px;
+            max-width: 100%;
+            max-height: 40px;
+            width: auto;
+            height: auto;
+            object-fit: contain;
         }
 
         @media print {
@@ -224,13 +246,13 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
         </tr>
     </table>
 
-    <table>
+    <table class="attendance-table">
         <thead>
             <tr>
                 <th class="col-no">No</th>
-                <th>Nama Lengkap</th>
-                <th>Instansi</th>
-                <th>Jabatan</th>
+                <th class="col-nama">Nama Lengkap</th>
+                <th class="col-instansi">Instansi</th>
+                <th class="col-jabatan">Jabatan</th>
                 <th class="col-ttd">Tanda Tangan</th>
             </tr>
         </thead>
@@ -241,13 +263,13 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
                     <td class="col-no">
                         <?= $no++ ?>
                     </td>
-                    <td>
+                    <td class="col-nama">
                         <?= htmlspecialchars($row['nama']) ?>
                     </td>
-                    <td>
+                    <td class="col-instansi">
                         <?= htmlspecialchars($row['instansi']) ?>
                     </td>
-                    <td>
+                    <td class="col-jabatan">
                         <?= htmlspecialchars($row['jabatan']) ?>
                     </td>
                     <td class="col-ttd">

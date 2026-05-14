@@ -221,6 +221,8 @@ class KegiatanController
         $user = AuthMiddleware::user();
 
         try {
+            KegiatanStatusService::ensureManualStatusColumn($pdo);
+
             $stmt = $pdo->prepare("SELECT * FROM kegiatan WHERE id = ?");
             $stmt->execute([$id]);
             $kegiatan = $stmt->fetch();
