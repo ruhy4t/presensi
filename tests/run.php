@@ -37,6 +37,7 @@ function assertContainsText(string $needle, string $haystack): void
 require_once dirname(__DIR__) . '/config/env.php';
 require_once dirname(__DIR__) . '/src/Services/KegiatanStatusService.php';
 require_once dirname(__DIR__) . '/src/Services/KegiatanUrlService.php';
+require_once dirname(__DIR__) . '/src/Services/ListFilterService.php';
 require_once dirname(__DIR__) . '/scripts/sql.php';
 
 test('manual active status remains marked as manual', function (): void {
@@ -95,6 +96,23 @@ test('migration parser preserves semicolons inside SQL strings', function (): vo
     assertSameValue(2, count($statements));
     assertContainsText("'SELECT 1; SELECT 2'", $statements[0]);
     assertSameValue('SELECT 3', $statements[1]);
+});
+
+test('list filters accept only known statuses', function (): void {
+    assertSameValue('attended', ListFilterService::registrationStatus('attended'));
+    assertSameValue('', ListFilterService::registrationStatus('unknown'));
+    assertSameValue('Diarsipkan', ListFilterService::kegiatanStatus('Diarsipkan'));
+    assertSameValue('', ListFilterService::kegiatanStatus('Dihapus'));
+});
+
+test('list filters reject impossible dates and normalize search text', function (): void {
+    assertSameValue('2026-07-13', ListFilterService::date('2026-07-13'));
+    assertSameValue('', ListFilterService::date('2026-02-31'));
+    assertSameValue('peserta', ListFilterService::search("  pes\x00erta  "));
+});
+
+test('LIKE filters escape user wildcard characters', function (): void {
+    assertSameValue('%100\\%\\_hadir%', ListFilterService::like('100%_hadir'));
 });
 
 echo "\nResult: {$passed} passed, {$failed} failed.\n";

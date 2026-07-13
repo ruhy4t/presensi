@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../Services/KegiatanStatusService.php';
+require_once __DIR__ . '/../Services/ListFilterService.php';
 
 class ReportController
 {
@@ -18,14 +19,62 @@ class ReportController
 
         KegiatanStatusService::syncAutomaticStatuses($pdo);
 
-        if ($user['role'] === 'admin') {
-            $stmt = $pdo->prepare("SELECT k.*, u.fullname as creator_name, (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id) as attendance_count FROM kegiatan k LEFT JOIN users u ON k.user_id = u.id WHERE k.status != 'Dihapus' ORDER BY k.created_at DESC");
-            $stmt->execute();
-        } else {
-            $stmt = $pdo->prepare("SELECT k.*, u.fullname as creator_name, (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id) as attendance_count FROM kegiatan k LEFT JOIN users u ON k.user_id = u.id WHERE k.user_id = ? AND k.status != 'Dihapus' ORDER BY k.created_at DESC");
-            $stmt->execute([$user['id']]);
+        $filters = [
+            'q' => ListFilterService::search($_GET['q'] ?? ''),
+            'status' => ListFilterService::kegiatanStatus($_GET['status'] ?? ''),
+            'date_from' => ListFilterService::date($_GET['date_from'] ?? ''),
+            'date_to' => ListFilterService::date($_GET['date_to'] ?? '')
+        ];
+        if ($filters['date_from'] !== '' && $filters['date_to'] !== '' && $filters['date_from'] > $filters['date_to']) {
+            [$filters['date_from'], $filters['date_to']] = [$filters['date_to'], $filters['date_from']];
         }
+
+        $where = ["k.status != 'Dihapus'"];
+        $params = [];
+
+        if ($user['role'] !== 'admin') {
+            $where[] = 'k.user_id = :user_id';
+            $params[':user_id'] = (int) $user['id'];
+        }
+        if ($filters['q'] !== '') {
+            $searchValue = ListFilterService::like($filters['q']);
+            $where[] = '(k.nama_kegiatan LIKE :search_name OR k.tempat_pelaksanaan LIKE :search_place OR u.fullname LIKE :search_creator)';
+            $params[':search_name'] = $searchValue;
+            $params[':search_place'] = $searchValue;
+            $params[':search_creator'] = $searchValue;
+        }
+        if ($filters['status'] !== '') {
+            $where[] = 'k.status = :status';
+            $params[':status'] = $filters['status'];
+        }
+        if ($filters['date_from'] !== '') {
+            $where[] = 'k.tanggal_pelaksanaan >= :date_from';
+            $params[':date_from'] = $filters['date_from'];
+        }
+        if ($filters['date_to'] !== '') {
+            $where[] = 'k.tanggal_pelaksanaan <= :date_to';
+            $params[':date_to'] = $filters['date_to'];
+        }
+
+        $whereSql = implode(' AND ', $where);
+        $stmt = $pdo->prepare("
+            SELECT k.*, u.fullname AS creator_name,
+                   (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id) AS attendance_count
+            FROM kegiatan k
+            LEFT JOIN users u ON k.user_id = u.id
+            WHERE {$whereSql}
+            ORDER BY k.created_at DESC
+        ");
+        foreach ($params as $name => $value) {
+            $stmt->bindValue($name, $value, $name === ':user_id' ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->execute();
         $kegiatanList = $stmt->fetchAll();
+        $reportSummary = [
+            'total_kegiatan' => count($kegiatanList),
+            'aktif' => count(array_filter($kegiatanList, static fn(array $row): bool => $row['status'] === 'Aktif')),
+            'total_hadir' => array_sum(array_map(static fn(array $row): int => (int) $row['attendance_count'], $kegiatanList))
+        ];
 
         require __DIR__ . '/../Views/reports.php';
     }

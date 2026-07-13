@@ -57,6 +57,13 @@ php scripts/doctor.php
 inti. GitHub Actions juga menjalankan pemeriksaan sintaks dan regression checks
 pada setiap push atau pull request.
 
+Jika database lokal tersedia, jalankan integration check read-only untuk filter
+peserta dan laporan:
+
+```powershell
+php tests/integration.php
+```
+
 Urutan deployment yang disarankan:
 
 1. Jalankan regression checks.

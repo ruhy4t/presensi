@@ -4,8 +4,14 @@ function maskNikList($nik) {
     return strlen($nik) >= 8 ? substr($nik, 0, 4) . str_repeat('*', max(0, strlen($nik) - 8)) . substr($nik, -4) : $nik;
 }
 
-function registrationPageUrl($page, $kegiatanId) {
-    return '/registrations?id=' . urlencode((string) $kegiatanId) . '&page=' . urlencode((string) $page);
+function registrationPageUrl($page, $kegiatanId, array $filters = []) {
+    $query = array_filter([
+        'id' => $kegiatanId,
+        'page' => $page,
+        'q' => $filters['q'] ?? '',
+        'status' => $filters['status'] ?? ''
+    ], static fn($value) => $value !== '');
+    return '/registrations?' . http_build_query($query);
 }
 ?>
 <!DOCTYPE html>
@@ -42,7 +48,43 @@ function registrationPageUrl($page, $kegiatanId) {
             </div>
         </div>
 
+        <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                <p class="text-xs font-bold uppercase tracking-wide text-gray-500">Total Registrasi</p>
+                <p class="mt-1 text-2xl font-bold text-gray-900"><?= number_format((int) $registrationSummary['total']) ?></p>
+            </div>
+            <div class="rounded-xl border border-green-100 bg-green-50 p-4">
+                <p class="text-xs font-bold uppercase tracking-wide text-green-600">Sudah Hadir</p>
+                <p class="mt-1 text-2xl font-bold text-green-900"><?= number_format((int) $registrationSummary['attended']) ?></p>
+            </div>
+            <div class="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <p class="text-xs font-bold uppercase tracking-wide text-blue-600">Belum Konfirmasi</p>
+                <p class="mt-1 text-2xl font-bold text-blue-900"><?= number_format((int) $registrationSummary['registered']) ?></p>
+            </div>
+        </div>
+
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <form method="GET" action="/registrations" class="grid grid-cols-1 gap-3 border-b border-gray-100 bg-gray-50/70 p-4 md:grid-cols-[1fr_220px_auto]">
+                <input type="hidden" name="id" value="<?= (int) $kegiatan['id'] ?>">
+                <label class="relative">
+                    <span class="sr-only">Cari peserta</span>
+                    <i class="bi bi-search absolute left-3 top-2.5 text-gray-400"></i>
+                    <input type="search" name="q" value="<?= htmlspecialchars($filters['q'], ENT_QUOTES) ?>"
+                           placeholder="Nama, NIK, NIP, unit, HP, email, atau token"
+                           class="w-full rounded-lg border border-gray-200 bg-white py-2 pl-10 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+                </label>
+                <select name="status" class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+                    <option value="">Semua status</option>
+                    <option value="registered" <?= $filters['status'] === 'registered' ? 'selected' : '' ?>>Belum konfirmasi</option>
+                    <option value="attended" <?= $filters['status'] === 'attended' ? 'selected' : '' ?>>Sudah hadir</option>
+                </select>
+                <div class="flex gap-2">
+                    <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Terapkan</button>
+                    <?php if ($filters['q'] !== '' || $filters['status'] !== ''): ?>
+                        <a href="/registrations?id=<?= (int) $kegiatan['id'] ?>" class="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100">Reset</a>
+                    <?php endif; ?>
+                </div>
+            </form>
             <div class="flex flex-col gap-2 border-b border-gray-100 px-4 py-3 md:flex-row md:items-center md:justify-between">
                 <p class="text-sm text-gray-600">
                     Menampilkan
@@ -74,7 +116,7 @@ function registrationPageUrl($page, $kegiatanId) {
                             <tr>
                                 <td colspan="8" class="px-4 py-12 text-center text-gray-500">
                                     <i class="bi bi-person-lines-fill text-3xl block mb-2 text-gray-300"></i>
-                                    Belum ada peserta pra-registrasi atau biodata.
+                                    <?= $filters['q'] !== '' || $filters['status'] !== '' ? 'Tidak ada peserta yang sesuai dengan filter.' : 'Belum ada peserta pra-registrasi atau biodata.' ?>
                                 </td>
                             </tr>
                         <?php endif; ?>
@@ -126,14 +168,14 @@ function registrationPageUrl($page, $kegiatanId) {
                         <?php $previousPage = max(1, $pagination['page'] - 1); ?>
                         <?php $nextPage = min($pagination['total_pages'], $pagination['page'] + 1); ?>
 
-                        <a href="<?= $pagination['page'] > 1 ? registrationPageUrl($previousPage, $kegiatan['id']) : '#' ?>"
+                        <a href="<?= $pagination['page'] > 1 ? registrationPageUrl($previousPage, $kegiatan['id'], $filters) : '#' ?>"
                            class="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm font-medium <?= $pagination['page'] > 1 ? 'border-gray-200 text-gray-700 hover:bg-gray-50' : 'pointer-events-none border-gray-100 text-gray-300' ?>">
                             <i class="bi bi-chevron-left"></i> Sebelumnya
                         </a>
 
                         <?php for ($i = 1; $i <= $pagination['total_pages']; $i++): ?>
                             <?php if ($i === 1 || $i === $pagination['total_pages'] || abs($i - $pagination['page']) <= 2): ?>
-                                <a href="<?= registrationPageUrl($i, $kegiatan['id']) ?>"
+                                <a href="<?= registrationPageUrl($i, $kegiatan['id'], $filters) ?>"
                                    class="inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-3 text-sm font-semibold <?= $i === $pagination['page'] ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50' ?>">
                                     <?= $i ?>
                                 </a>
@@ -142,7 +184,7 @@ function registrationPageUrl($page, $kegiatanId) {
                             <?php endif; ?>
                         <?php endfor; ?>
 
-                        <a href="<?= $pagination['page'] < $pagination['total_pages'] ? registrationPageUrl($nextPage, $kegiatan['id']) : '#' ?>"
+                        <a href="<?= $pagination['page'] < $pagination['total_pages'] ? registrationPageUrl($nextPage, $kegiatan['id'], $filters) : '#' ?>"
                            class="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm font-medium <?= $pagination['page'] < $pagination['total_pages'] ? 'border-gray-200 text-gray-700 hover:bg-gray-50' : 'pointer-events-none border-gray-100 text-gray-300' ?>">
                             Berikutnya <i class="bi bi-chevron-right"></i>
                         </a>

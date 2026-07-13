@@ -36,6 +36,51 @@ function formatTanggalIndoReport($tgl) {
             <a href="/dashboard" class="text-blue-600 hover:underline"><i class="bi bi-arrow-left"></i> Kembali ke Dashboard</a>
         </div>
 
+        <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                <p class="text-xs font-bold uppercase tracking-wide text-gray-500">Kegiatan Ditampilkan</p>
+                <p class="mt-1 text-2xl font-bold text-gray-900"><?= number_format($reportSummary['total_kegiatan']) ?></p>
+            </div>
+            <div class="rounded-xl border border-green-100 bg-green-50 p-4">
+                <p class="text-xs font-bold uppercase tracking-wide text-green-600">Kegiatan Aktif</p>
+                <p class="mt-1 text-2xl font-bold text-green-900"><?= number_format($reportSummary['aktif']) ?></p>
+            </div>
+            <div class="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <p class="text-xs font-bold uppercase tracking-wide text-blue-600">Total Kehadiran</p>
+                <p class="mt-1 text-2xl font-bold text-blue-900"><?= number_format($reportSummary['total_hadir']) ?></p>
+            </div>
+        </div>
+
+        <form method="GET" action="/reports" class="mb-6 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-5">
+                <label class="relative lg:col-span-2">
+                    <span class="sr-only">Cari kegiatan</span>
+                    <i class="bi bi-search absolute left-3 top-2.5 text-gray-400"></i>
+                    <input type="search" name="q" value="<?= htmlspecialchars($filters['q'], ENT_QUOTES) ?>"
+                           placeholder="Cari nama, tempat, atau pembuat"
+                           class="w-full rounded-lg border border-gray-200 py-2 pl-10 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+                </label>
+                <select name="status" class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+                    <option value="">Semua status</option>
+                    <?php foreach (['Aktif', 'Non-Aktif', 'Diarsipkan'] as $statusOption): ?>
+                        <option value="<?= $statusOption ?>" <?= $filters['status'] === $statusOption ? 'selected' : '' ?>><?= $statusOption ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="date" name="date_from" value="<?= htmlspecialchars($filters['date_from']) ?>" title="Tanggal mulai"
+                       class="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+                <input type="date" name="date_to" value="<?= htmlspecialchars($filters['date_to']) ?>" title="Tanggal akhir"
+                       class="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                    <i class="bi bi-funnel mr-1"></i> Terapkan Filter
+                </button>
+                <?php if (array_filter($filters, static fn($value) => $value !== '') !== []): ?>
+                    <a href="/reports" class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Reset</a>
+                <?php endif; ?>
+            </div>
+        </form>
+
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="w-full text-left whitespace-nowrap">
@@ -55,7 +100,7 @@ function formatTanggalIndoReport($tgl) {
                             <tr>
                                 <td colspan="<?= $user['role'] === 'admin' ? 5 : 4 ?>" class="px-6 py-12 text-center text-gray-500">
                                     <i class="bi bi-inbox text-3xl block mb-2 text-gray-300"></i>
-                                    Belum ada data kegiatan.
+                                    <?= array_filter($filters, static fn($value) => $value !== '') !== [] ? 'Tidak ada kegiatan yang sesuai dengan filter.' : 'Belum ada data kegiatan.' ?>
                                 </td>
                             </tr>
                         <?php endif; ?>
@@ -65,7 +110,7 @@ function formatTanggalIndoReport($tgl) {
                                 <td class="px-6 py-4">
                                     <div class="font-medium text-gray-900"><?= htmlspecialchars($k['nama_kegiatan']) ?></div>
                                     <div class="text-xs text-gray-500 mt-1">Status: 
-                                        <span class="<?= $k['status'] === 'Aktif' ? 'text-green-600' : 'text-gray-600' ?> font-semibold"><?= $k['status'] ?></span>
+                                        <span class="<?= $k['status'] === 'Aktif' ? 'text-green-600' : 'text-gray-600' ?> font-semibold"><?= htmlspecialchars($k['status']) ?></span>
                                     </div>
                                 </td>
                                 <td class="px-6 py-4">
@@ -79,7 +124,7 @@ function formatTanggalIndoReport($tgl) {
                                 </td>
                                 <?php if ($user['role'] === 'admin'): ?>
                                     <td class="px-6 py-4 text-sm text-gray-600">
-                                        <i class="bi bi-person mr-1 text-gray-400"></i> <?= htmlspecialchars($k['creator_name']) ?>
+                                        <i class="bi bi-person mr-1 text-gray-400"></i> <?= htmlspecialchars($k['creator_name'] ?? '-') ?>
                                     </td>
                                 <?php endif; ?>
                                 <td class="px-6 py-4 text-center">
