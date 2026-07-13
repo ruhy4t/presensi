@@ -6,6 +6,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $controller->handlePost();
 }
 $users = $controller->index();
+$user = AuthMiddleware::user();
 $currentUserId = (int) ($_SESSION['user_id'] ?? 0);
 ?>
 <!DOCTYPE html>
@@ -16,10 +17,20 @@ $currentUserId = (int) ($_SESSION['user_id'] ?? 0);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kelola User - Admin</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs" defer></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 </head>
 
-<body class="bg-gray-50 p-8">
+<body class="bg-gray-50 text-gray-800 font-sans antialiased">
+    <div class="flex h-screen overflow-hidden" x-data="{ sidebarOpen: false }">
+        <?php $activeMenu = 'users'; require __DIR__ . '/partials/sidebar.php'; ?>
+        <div class="flex flex-1 flex-col overflow-hidden">
+            <header class="flex items-center justify-between px-6 py-4 bg-white border-b shadow-sm lg:hidden">
+                <button @click="sidebarOpen = !sidebarOpen" class="text-gray-500 focus:outline-none"><i class="bi bi-list text-2xl"></i></button>
+                <span class="font-semibold text-lg">Kelola User</span>
+                <div class="w-8"></div>
+            </header>
+            <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-6 md:p-8">
 
     <div class="max-w-6xl mx-auto">
         <div class="flex items-center justify-between mb-8">
@@ -225,6 +236,9 @@ $currentUserId = (int) ($_SESSION['user_id'] ?? 0);
                     <?php endforeach; ?>
                 </tbody>
             </table>
+        </div>
+    </div>
+            </main>
         </div>
     </div>
 

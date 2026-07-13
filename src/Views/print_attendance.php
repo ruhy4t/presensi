@@ -237,7 +237,7 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
         <tr>
             <td class="col-label">Hari, Tanggal</td>
             <td class="col-titikdua">:</td>
-            <td><?= formatTanggalIndoPrint($kegiatan['tanggal_pelaksanaan'] ?? '') ?></td>
+            <td><?= formatTanggalIndoPrint($kegiatan['tanggal_pelaksanaan'] ?? '') ?><?php if (!empty($kegiatan['tanggal_selesai']) && $kegiatan['tanggal_selesai'] !== $kegiatan['tanggal_pelaksanaan']): ?> s.d. <?= formatTanggalIndoPrint($kegiatan['tanggal_selesai']) ?><?php endif; ?></td>
         </tr>
         <tr>
             <td class="col-label">Waktu</td>

@@ -72,6 +72,12 @@ Urutan deployment yang disarankan:
 4. Jalankan health check.
 5. Uji login, pembuatan kegiatan, registrasi, presensi, dan ekspor laporan.
 
+Untuk hosting tanpa akses CLI, backup database melalui phpMyAdmin lalu impor
+file migration baru melalui menu **Import**. Kegiatan satu hari tetap memakai
+`tanggal_pelaksanaan`; `tanggal_selesai` hanya diisi untuk kegiatan beberapa
+hari. Satu peserta tetap hanya dapat tercatat hadir satu kali untuk keseluruhan
+kegiatan.
+
 ## Catatan Keamanan
 
 Sebelum deployment publik, pastikan konfigurasi database, kredensial, file

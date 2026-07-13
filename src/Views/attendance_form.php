@@ -43,7 +43,11 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
             <p class="text-sm text-blue-100 font-semibold uppercase tracking-wide"><?= $useLegacyAttendance ? 'Daftar Hadir' : 'Biodata Peserta' ?></p>
             <h1 class="text-2xl md:text-3xl font-bold mt-1"><?= htmlspecialchars($kegiatan['nama_kegiatan']) ?></h1>
             <p class="mt-2 text-blue-100 text-sm">
-                <i class="bi bi-calendar-event mr-1"></i> <?= formatTanggalIndoPublic($kegiatan['tanggal_pelaksanaan'] ?? '-') ?>
+                <i class="bi bi-calendar-event mr-1"></i>
+                <?= formatTanggalIndoPublic($kegiatan['tanggal_pelaksanaan'] ?? '-') ?>
+                <?php if (!empty($kegiatan['tanggal_selesai']) && $kegiatan['tanggal_selesai'] !== $kegiatan['tanggal_pelaksanaan']): ?>
+                    s.d. <?= formatTanggalIndoPublic($kegiatan['tanggal_selesai']) ?>
+                <?php endif; ?>
             </p>
         </div>
 
@@ -183,6 +187,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                             <div><dt class="font-semibold text-gray-500">TTL</dt><dd x-text="prefillData?.tempat_lahir + ', ' + prefillData?.tanggal_lahir"></dd></div>
                             <div><dt class="font-semibold text-gray-500">No. HP</dt><dd x-text="prefillData?.hp"></dd></div>
                             <div class="md:col-span-2"><dt class="font-semibold text-gray-500">Alamat Unit Kerja</dt><dd x-text="prefillData?.alamat_unit_kerja"></dd></div>
+                            <div class="md:col-span-2"><dt class="font-semibold text-gray-500">Alamat Rumah</dt><dd x-text="prefillData?.alamat_rumah || '-' "></dd></div>
                         </dl>
 
                         <form @submit.prevent="confirmTokenAttendance" class="mt-5 space-y-4">
@@ -244,6 +249,10 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                         <div class="md:col-span-2">
                             <label class="block text-sm font-bold text-gray-700 mb-1">Alamat Unit Kerja</label>
                             <textarea x-model="form.alamat_unit_kerja" class="field min-h-[90px]" required></textarea>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Alamat Rumah</label>
+                            <textarea x-model="form.alamat_rumah" class="field min-h-[90px]" placeholder="Alamat tempat tinggal lengkap" required></textarea>
                         </div>
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-1">No. HP</label>
@@ -437,6 +446,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     unit_kerja: '',
                     alamat_unit_kerja: '',
                     telepon_unit_kerja: '',
+                    alamat_rumah: '',
                     hp: '',
                     email: '',
                     confirm_hadir: <?= $eventMode === 'before' ? 'false' : 'false' ?>

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS kegiatan (
     user_id INT UNSIGNED NOT NULL,
     nama_kegiatan VARCHAR(255) NOT NULL,
     tanggal_pelaksanaan DATE NULL,
+    tanggal_selesai DATE NULL,
     waktu_pelaksanaan VARCHAR(100) NULL,
     tempat_pelaksanaan VARCHAR(255) NULL,
     pejabat_penanggung_jawab VARCHAR(200) NULL,
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS attendances (
     created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    UNIQUE KEY uq_attendances_kegiatan_identity (kegiatan_id, nama, hp),
     KEY idx_attendances_kegiatan (kegiatan_id),
     KEY idx_attendances_identity (kegiatan_id, nama, hp)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -44,7 +44,12 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
         'perlu_biodata' => htmlspecialchars($keg['perlu_biodata'] ?? 'Ya'),
         'status' => $keg['status'],
         'tanggal_pelaksanaan' => $keg['tanggal_pelaksanaan'] ?? '',
+        'tanggal_selesai' => $keg['tanggal_selesai'] ?? '',
         'tanggal_pelaksanaan_indo' => formatTanggalIndo($keg['tanggal_pelaksanaan'] ?? '-'),
+        'rentang_tanggal_indo' => formatTanggalIndo($keg['tanggal_pelaksanaan'] ?? '-')
+            . (!empty($keg['tanggal_selesai']) && $keg['tanggal_selesai'] !== $keg['tanggal_pelaksanaan']
+                ? ' s.d. ' . formatTanggalIndo($keg['tanggal_selesai'])
+                : ''),
         'waktu_pelaksanaan' => htmlspecialchars($keg['waktu_pelaksanaan'] ?? '-'),
         'tempat_pelaksanaan' => htmlspecialchars($keg['tempat_pelaksanaan'] ?? ''),
         'catatan' => htmlspecialchars($keg['catatan'] ?? ''),
@@ -86,53 +91,7 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
 
     <div class="flex h-screen overflow-hidden" x-data="{ sidebarOpen: false }">
 
-        <!-- Sidebar -->
-        <aside
-            class="fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transition-transform transform lg:translate-x-0 lg:static lg:inset-0"
-            :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
-            <div class="flex items-center justify-center h-16 bg-slate-800 shadow-md">
-                <h1 class="text-xl font-bold tracking-wider">APP ABSENSI</h1>
-            </div>
-            <nav class="mt-5 px-4 space-y-2">
-                <a href="/dashboard"
-                    class="flex items-center px-4 py-3 bg-blue-600 rounded-lg text-white shadow-lg shadow-blue-500/30">
-                    <i class="bi bi-grid-fill mr-3"></i> Dashboard
-                </a>
-
-                <?php if ($user['role'] === 'admin'): ?>
-                    <a href="/users"
-                        class="flex items-center px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors">
-                        <i class="bi bi-people-fill mr-3"></i> Kelola User
-                    </a>
-                <?php endif; ?>
-
-                <a href="/reports"
-                    class="flex items-center px-4 py-3 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors">
-                    <i class="bi bi-file-earmark-pdf-fill mr-3"></i> Laporan
-                </a>
-
-                <a href="/logout?action=logout"
-                    class="flex items-center px-4 py-3 text-red-400 hover:bg-red-900/20 hover:text-red-300 rounded-lg transition-colors mt-8">
-                    <i class="bi bi-box-arrow-left mr-3"></i> Logout
-                </a>
-            </nav>
-
-            <div class="absolute bottom-0 left-0 w-full p-4 bg-slate-800/50">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-lg font-bold">
-                        <?= strtoupper(substr($user['username'], 0, 1)) ?>
-                    </div>
-                    <div>
-                        <p class="text-sm font-semibold truncate w-32">
-                            <?= htmlspecialchars($user['fullname']) ?>
-                        </p>
-                        <span class="text-xs text-slate-400 capitalize">
-                            <?= $user['role'] ?>
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </aside>
+        <?php $activeMenu = 'dashboard'; require __DIR__ . '/partials/sidebar.php'; ?>
 
         <!-- Main Content -->
         <div class="flex-1 flex flex-col overflow-hidden">
@@ -322,7 +281,7 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                                 </h3>
                                 <div class="text-sm text-gray-500 space-y-1">
                                     <p><i class="bi bi-calendar-event mr-2"></i>
-                                        <span x-text="kegiatan.tanggal_pelaksanaan_indo"></span>
+                                        <span x-text="kegiatan.rentang_tanggal_indo"></span>
                                     </p>
                                     <p><i class="bi bi-clock mr-2"></i>
                                         <span x-text="kegiatan.waktu_pelaksanaan"></span>
@@ -480,10 +439,14 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                                         placeholder="Contoh: 400.3/123-Disdik">
                                 </div>
                             </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                 <div>
-                                    <label class="block text-gray-700 text-sm font-bold mb-2">Tanggal Pelaksanaan</label>
-                                    <input type="date" name="tanggal_pelaksanaan" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring focus:border-blue-500">
+                                    <label class="block text-gray-700 text-sm font-bold mb-2">Tanggal Mulai</label>
+                                    <input type="date" name="tanggal_pelaksanaan" id="add-tanggal-mulai" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring focus:border-blue-500">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 text-sm font-bold mb-2">Tanggal Selesai <span class="font-normal text-gray-400">(opsional)</span></label>
+                                    <input type="date" name="tanggal_selesai" :min="document.getElementById('add-tanggal-mulai')?.value || ''" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring focus:border-blue-500">
                                 </div>
                                 <div>
                                     <label class="block text-gray-700 text-sm font-bold mb-2">Jam Pelaksanaan</label>
@@ -578,10 +541,14 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                                         class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring focus:border-blue-500">
                                 </div>
                             </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                 <div>
-                                    <label class="block text-gray-700 text-sm font-bold mb-2">Tanggal Pelaksanaan</label>
+                                    <label class="block text-gray-700 text-sm font-bold mb-2">Tanggal Mulai</label>
                                     <input type="date" name="tanggal_pelaksanaan" x-model="editData.tanggal_pelaksanaan" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring focus:border-blue-500">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 text-sm font-bold mb-2">Tanggal Selesai <span class="font-normal text-gray-400">(opsional)</span></label>
+                                    <input type="date" name="tanggal_selesai" x-model="editData.tanggal_selesai" :min="editData.tanggal_pelaksanaan || ''" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring focus:border-blue-500">
                                 </div>
                                 <div>
                                     <label class="block text-gray-700 text-sm font-bold mb-2">Jam Pelaksanaan</label>

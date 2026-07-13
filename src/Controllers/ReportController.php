@@ -48,7 +48,7 @@ class ReportController
             $params[':status'] = $filters['status'];
         }
         if ($filters['date_from'] !== '') {
-            $where[] = 'k.tanggal_pelaksanaan >= :date_from';
+            $where[] = 'COALESCE(k.tanggal_selesai, k.tanggal_pelaksanaan) >= :date_from';
             $params[':date_from'] = $filters['date_from'];
         }
         if ($filters['date_to'] !== '') {

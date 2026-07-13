@@ -83,6 +83,9 @@ function formatTanggalIndoHome($tgl) {
                                     <p class="text-sm text-gray-500 mt-1">
                                         <i class="bi bi-calendar3 mr-1"></i>
                                         <?= formatTanggalIndoHome($k['tanggal_pelaksanaan'] ?? '-') ?>
+                                        <?php if (!empty($k['tanggal_selesai']) && $k['tanggal_selesai'] !== $k['tanggal_pelaksanaan']): ?>
+                                            s.d. <?= formatTanggalIndoHome($k['tanggal_selesai']) ?>
+                                        <?php endif; ?>
                                     </p>
                                 </div>
                                 <div class="flex-shrink-0">

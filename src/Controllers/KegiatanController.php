@@ -69,7 +69,9 @@ class KegiatanController
         $jenis_kegiatan = $_POST['jenis_kegiatan'] ?? 'Daring';
         $nomor_surat_undangan = trim($_POST['nomor_surat_undangan'] ?? '');
         $perlu_biodata = $_POST['perlu_biodata'] ?? 'Ya';
-        $tanggal_pelaksanaan = $_POST['tanggal_pelaksanaan'] ?? null;
+        $schedule = KegiatanStatusService::normalizeRange($_POST['tanggal_pelaksanaan'] ?? '', $_POST['tanggal_selesai'] ?? '');
+        $tanggal_pelaksanaan = $schedule['start'];
+        $tanggal_selesai = $schedule['end'];
         $waktu_pelaksanaan = $_POST['waktu_pelaksanaan'] ?? null;
         $tempat_pelaksanaan = $_POST['tempat_pelaksanaan'] ?? null;
         $catatan = trim($_POST['catatan'] ?? '');
@@ -81,6 +83,12 @@ class KegiatanController
 
         if (strlen($nama) < 3) {
             $_SESSION['flash_error'] = "Nama kegiatan minimal 3 karakter.";
+            header('Location: /dashboard');
+            exit;
+        }
+
+        if ($schedule['error']) {
+            $_SESSION['flash_error'] = $schedule['error'];
             header('Location: /dashboard');
             exit;
         }
@@ -104,11 +112,12 @@ class KegiatanController
             KegiatanUrlService::ensureTokenColumn($pdo);
             $this->ensureCatatanColumn($pdo);
 
-            $status = KegiatanStatusService::automaticStatusForDate($tanggal_pelaksanaan);
+            KegiatanStatusService::ensureEndDateColumn($pdo);
+            $status = KegiatanStatusService::automaticStatusForDate($tanggal_pelaksanaan, $tanggal_selesai);
 
             $attendanceToken = KegiatanUrlService::generateUniqueToken($pdo);
-            $stmt = $pdo->prepare("INSERT INTO kegiatan (user_id, nama_kegiatan, jenis_kegiatan, nomor_surat_undangan, perlu_biodata, tanggal_pelaksanaan, waktu_pelaksanaan, tempat_pelaksanaan, catatan, pejabat_penanggung_jawab, jabatan_penanggung_jawab, nip_penanggung_jawab, status, status_manual, attendance_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)");
-            $stmt->execute([$user_id, $nama, $jenis_kegiatan, $nomor_surat_undangan ?: null, $perlu_biodata, $tanggal_pelaksanaan, $waktu_pelaksanaan, $tempat_pelaksanaan, $catatan ?: null, $pejabat_penanggung_jawab, $jabatan_penanggung_jawab, $nip_penanggung_jawab, $status, $attendanceToken]);
+            $stmt = $pdo->prepare("INSERT INTO kegiatan (user_id, nama_kegiatan, jenis_kegiatan, nomor_surat_undangan, perlu_biodata, tanggal_pelaksanaan, tanggal_selesai, waktu_pelaksanaan, tempat_pelaksanaan, catatan, pejabat_penanggung_jawab, jabatan_penanggung_jawab, nip_penanggung_jawab, status, status_manual, attendance_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)");
+            $stmt->execute([$user_id, $nama, $jenis_kegiatan, $nomor_surat_undangan ?: null, $perlu_biodata, $tanggal_pelaksanaan, $tanggal_selesai, $waktu_pelaksanaan, $tempat_pelaksanaan, $catatan ?: null, $pejabat_penanggung_jawab, $jabatan_penanggung_jawab, $nip_penanggung_jawab, $status, $attendanceToken]);
 
             $_SESSION['flash_success'] = "Kegiatan berhasil ditambahkan.";
             $this->logActivity("ADD_KEGIATAN", "Added: $nama");
@@ -136,7 +145,9 @@ class KegiatanController
         $jenis_kegiatan = $_POST['jenis_kegiatan'] ?? 'Daring';
         $nomor_surat_undangan = trim($_POST['nomor_surat_undangan'] ?? '');
         $perlu_biodata = $_POST['perlu_biodata'] ?? 'Ya';
-        $tanggal_pelaksanaan = $_POST['tanggal_pelaksanaan'] ?? null;
+        $schedule = KegiatanStatusService::normalizeRange($_POST['tanggal_pelaksanaan'] ?? '', $_POST['tanggal_selesai'] ?? '');
+        $tanggal_pelaksanaan = $schedule['start'];
+        $tanggal_selesai = $schedule['end'];
         $waktu_pelaksanaan = $_POST['waktu_pelaksanaan'] ?? null;
         $tempat_pelaksanaan = $_POST['tempat_pelaksanaan'] ?? null;
         $catatan = trim($_POST['catatan'] ?? '');
@@ -147,6 +158,12 @@ class KegiatanController
 
         if (!in_array($jenis_kegiatan, ['Daring', 'Luring'], true)) {
             $jenis_kegiatan = 'Daring';
+        }
+
+        if ($schedule['error']) {
+            $_SESSION['flash_error'] = $schedule['error'];
+            header('Location: /dashboard');
+            exit;
         }
 
         if (!in_array($perlu_biodata, ['Ya', 'Tidak'], true)) {
@@ -164,6 +181,7 @@ class KegiatanController
 
         try {
             KegiatanStatusService::ensureManualStatusColumn($pdo);
+            KegiatanStatusService::ensureEndDateColumn($pdo);
             $this->ensureCatatanColumn($pdo);
 
             // Check ownership or admin
@@ -177,15 +195,15 @@ class KegiatanController
                 exit;
             }
 
-            $params = [$nama, $jenis_kegiatan, $nomor_surat_undangan ?: null, $perlu_biodata, $tanggal_pelaksanaan, $waktu_pelaksanaan, $tempat_pelaksanaan, $catatan ?: null, $pejabat_penanggung_jawab, $jabatan_penanggung_jawab, $nip_penanggung_jawab];
+            $params = [$nama, $jenis_kegiatan, $nomor_surat_undangan ?: null, $perlu_biodata, $tanggal_pelaksanaan, $tanggal_selesai, $waktu_pelaksanaan, $tempat_pelaksanaan, $catatan ?: null, $pejabat_penanggung_jawab, $jabatan_penanggung_jawab, $nip_penanggung_jawab];
             $statusSql = '';
 
             if ((int) ($kegiatan['status_manual'] ?? 0) === 0 && in_array($kegiatan['status'], ['Aktif', 'Non-Aktif'], true)) {
                 $statusSql = ", status = ?";
-                $params[] = KegiatanStatusService::automaticStatusForDate($tanggal_pelaksanaan);
+                $params[] = KegiatanStatusService::automaticStatusForDate($tanggal_pelaksanaan, $tanggal_selesai);
             }
 
-            $stmt = $pdo->prepare("UPDATE kegiatan SET nama_kegiatan = ?, jenis_kegiatan = ?, nomor_surat_undangan = ?, perlu_biodata = ?, tanggal_pelaksanaan = ?, waktu_pelaksanaan = ?, tempat_pelaksanaan = ?, catatan = ?, pejabat_penanggung_jawab = ?, jabatan_penanggung_jawab = ?, nip_penanggung_jawab = ?$statusSql WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE kegiatan SET nama_kegiatan = ?, jenis_kegiatan = ?, nomor_surat_undangan = ?, perlu_biodata = ?, tanggal_pelaksanaan = ?, tanggal_selesai = ?, waktu_pelaksanaan = ?, tempat_pelaksanaan = ?, catatan = ?, pejabat_penanggung_jawab = ?, jabatan_penanggung_jawab = ?, nip_penanggung_jawab = ?$statusSql WHERE id = ?");
             $params[] = $id;
             $stmt->execute($params);
 

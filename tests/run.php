@@ -57,6 +57,30 @@ test('today is active and other dates are inactive automatically', function (): 
     assertSameValue('Non-Aktif', KegiatanStatusService::automaticStatusForDate($tomorrow));
 });
 
+test('multi-day kegiatan stays active throughout its date range', function (): void {
+    $today = KegiatanStatusService::todayDate();
+    $yesterday = (new DateTimeImmutable($today))->modify('-1 day')->format('Y-m-d');
+    $tomorrow = (new DateTimeImmutable($today))->modify('+1 day')->format('Y-m-d');
+    assertSameValue('Aktif', KegiatanStatusService::automaticStatusForDate($yesterday, $tomorrow));
+    assertSameValue('Non-Aktif', KegiatanStatusService::automaticStatusForDate($tomorrow, null));
+});
+
+test('schedule validation rejects reversed date ranges', function (): void {
+    $valid = KegiatanStatusService::normalizeRange('2026-07-13', '2026-07-15');
+    assertSameValue('2026-07-13', $valid['start']);
+    assertSameValue('2026-07-15', $valid['end']);
+    assertSameValue(null, $valid['error']);
+
+    $invalid = KegiatanStatusService::normalizeRange('2026-07-15', '2026-07-13');
+    assertContainsText('tidak boleh sebelum', $invalid['error']);
+});
+
+test('single-day schedule remains backward compatible', function (): void {
+    $range = KegiatanStatusService::normalizeRange('2026-07-13', '2026-07-13');
+    assertSameValue('2026-07-13', $range['start']);
+    assertSameValue(null, $range['end']);
+});
+
 test('new kegiatan uses opaque attendance URL', function (): void {
     assertSameValue('/attendance?token=abc123', KegiatanUrlService::attendancePath([
         'id' => 9,
@@ -113,6 +137,35 @@ test('list filters reject impossible dates and normalize search text', function 
 
 test('LIKE filters escape user wildcard characters', function (): void {
     assertSameValue('%100\\%\\_hadir%', ListFilterService::like('100%_hadir'));
+});
+
+test('biodata form requires home address', function (): void {
+    $view = file_get_contents(dirname(__DIR__) . '/src/Views/attendance_form.php');
+    $controller = file_get_contents(dirname(__DIR__) . '/src/Controllers/AttendanceController.php');
+    if ($view === false || $controller === false) {
+        throw new RuntimeException('Biodata files cannot be read.');
+    }
+    assertContainsText('x-model="form.alamat_rumah"', $view);
+    assertContainsText("'alamat_rumah' => 'Alamat rumah'", $controller);
+});
+
+test('shared sidebar is used by all authenticated menus', function (): void {
+    foreach (['dashboard.php', 'users.php', 'reports.php'] as $viewName) {
+        $view = file_get_contents(dirname(__DIR__) . '/src/Views/' . $viewName);
+        if ($view === false) {
+            throw new RuntimeException("Cannot read {$viewName}");
+        }
+        assertContainsText("partials/sidebar.php", $view);
+    }
+});
+
+test('attendance writes lock identity rows before inserting', function (): void {
+    $controller = file_get_contents(dirname(__DIR__) . '/src/Controllers/AttendanceController.php');
+    if ($controller === false) {
+        throw new RuntimeException('Attendance controller cannot be read.');
+    }
+    assertContainsText('LIMIT 1 FOR UPDATE', $controller);
+    assertContainsText('uq_attendances_kegiatan_identity', file_get_contents(dirname(__DIR__) . '/migrations/2026_07_13_attendance_unique.sql'));
 });
 
 echo "\nResult: {$passed} passed, {$failed} failed.\n";

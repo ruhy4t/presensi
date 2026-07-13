@@ -41,7 +41,7 @@ class AttendanceController
                       status = 'Non-Aktif'
                       AND status_manual = 0
                       AND tanggal_pelaksanaan REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-                      AND tanggal_pelaksanaan < ?
+                      AND COALESCE(tanggal_selesai, tanggal_pelaksanaan) < ?
                   )
                   $legacyOnlySql
                 LIMIT 1
@@ -55,7 +55,7 @@ class AttendanceController
 
             $timing = $this->getEventTiming($kegiatan);
             $tanggalPelaksanaan = $timing['date'];
-            $isBeforeEvent = $timing['is_before_confirmation'];
+            $isBeforeEvent = $timing['is_before_confirmation'] && !$timing['is_after_event'];
             $isEventDay = $timing['is_event_day'] && $timing['can_confirm_attendance'];
             $isAfterEvent = $timing['is_after_event'];
             $confirmationOpenLabel = $timing['confirmation_open_label'];
@@ -212,6 +212,7 @@ class AttendanceController
             if ($timing['can_confirm_attendance']) {
                 if (empty($_POST['confirm_hadir'])) {
                     $pdo->rollBack();
+                    $this->deleteSignatureFile($signatureFile);
                     $this->jsonError('Konfirmasi kehadiran wajib dicentang.');
                     return;
                 }
@@ -220,6 +221,7 @@ class AttendanceController
                 $confirmResult = $this->confirmAttendance($registration['id'], $kegiatanId, $participant, false);
                 if (!$confirmResult['ok']) {
                     $pdo->rollBack();
+                    $this->deleteSignatureFile($signatureFile);
                     $this->jsonError($confirmResult['message']);
                     return;
                 }
@@ -241,8 +243,9 @@ class AttendanceController
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
+            $this->deleteSignatureFile($signatureFile);
             error_log($e->getMessage());
-            $this->jsonError('Terjadi kesalahan sistem saat menyimpan biodata.');
+            $this->jsonError($e->getCode() === '23000' ? 'Peserta sudah tercatat pada kegiatan ini.' : 'Terjadi kesalahan sistem saat menyimpan biodata.');
         }
     }
 
@@ -320,7 +323,7 @@ class AttendanceController
     {
         global $pdo;
 
-        $stmt = $pdo->prepare("SELECT status FROM participant_registrations WHERE id = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT status FROM participant_registrations WHERE id = ? LIMIT 1 FOR UPDATE");
         $stmt->execute([$registrationId]);
         $registration = $stmt->fetch();
 
@@ -369,7 +372,7 @@ class AttendanceController
             'unit_kerja' => trim($_POST['unit_kerja'] ?? ''),
             'alamat_unit_kerja' => trim($_POST['alamat_unit_kerja'] ?? ''),
             'telepon_unit_kerja' => trim($_POST['telepon_unit_kerja'] ?? ''),
-            'alamat_rumah' => trim($_POST['alamat_rumah'] ?? '-'),
+            'alamat_rumah' => trim($_POST['alamat_rumah'] ?? ''),
             'hp' => trim($_POST['hp'] ?? ''),
             'email' => trim($_POST['email'] ?? '')
         ];
@@ -385,6 +388,7 @@ class AttendanceController
             'jabatan' => 'Jabatan',
             'unit_kerja' => 'Unit kerja',
             'alamat_unit_kerja' => 'Alamat unit kerja',
+            'alamat_rumah' => 'Alamat rumah',
             'hp' => 'No. HP',
             'email' => 'Alamat email'
         ];
@@ -588,20 +592,28 @@ class AttendanceController
         }
 
         try {
-            $stmtVal = $pdo->prepare("SELECT id FROM attendances WHERE kegiatan_id = ? AND nama = ? AND hp = ?");
+            $pdo->beginTransaction();
+            $stmtVal = $pdo->prepare("SELECT id FROM attendances WHERE kegiatan_id = ? AND nama = ? AND hp = ? LIMIT 1 FOR UPDATE");
             $stmtVal->execute([$kegiatanId, $nama, $hp]);
             if ($stmtVal->fetch()) {
+                $pdo->rollBack();
+                $this->deleteSignatureFile($fileName);
                 $this->jsonError('Anda sudah mengisi daftar hadir ini.');
                 return;
             }
 
             $stmt = $pdo->prepare("INSERT INTO attendances (kegiatan_id, nama, instansi, jabatan, hp, signature_file) VALUES (?, ?, ?, ?, ?, ?)");
             $stmt->execute([$kegiatanId, $nama, $instansi, $jabatan, $hp, $fileName]);
+            $pdo->commit();
 
             $this->jsonSuccess('Berhasil Check-In!');
         } catch (PDOException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $this->deleteSignatureFile($fileName);
             error_log($e->getMessage());
-            $this->jsonError('Terjadi kesalahan sistem.');
+            $this->jsonError($e->getCode() === '23000' ? 'Anda sudah mengisi daftar hadir ini.' : 'Terjadi kesalahan sistem.');
         }
     }
 
@@ -610,6 +622,7 @@ class AttendanceController
         global $pdo;
 
         KegiatanStatusService::ensureManualStatusColumn($pdo);
+        KegiatanStatusService::ensureEndDateColumn($pdo);
 
         $stmt = $pdo->prepare("
             SELECT *
@@ -617,11 +630,11 @@ class AttendanceController
             WHERE id = ?
               AND status NOT IN ('Dihapus', 'Diarsipkan')
               AND NOT (status = 'Non-Aktif' AND status_manual = 1)
-              AND NOT (
-                  status = 'Non-Aktif'
-                  AND status_manual = 0
-                  AND tanggal_pelaksanaan REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-                  AND tanggal_pelaksanaan < ?
+                  AND NOT (
+                      status = 'Non-Aktif'
+                      AND status_manual = 0
+                      AND tanggal_pelaksanaan REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+                      AND COALESCE(tanggal_selesai, tanggal_pelaksanaan) < ?
               )
             LIMIT 1
         ");
@@ -643,21 +656,34 @@ class AttendanceController
         $now = new DateTimeImmutable('now', new DateTimeZone('Asia/Jakarta'));
         $today = $now->format('Y-m-d');
         $tanggalPelaksanaan = $this->normalizeDate($kegiatan['tanggal_pelaksanaan'] ?? '');
+        $tanggalSelesai = $this->normalizeDate($kegiatan['tanggal_selesai'] ?? '') ?? $tanggalPelaksanaan;
         $startsAt = $this->eventStartsAt($kegiatan, $tanggalPelaksanaan);
         $confirmationOpensAt = $startsAt ? $startsAt->modify('-90 minutes') : null;
-        $canConfirmAttendance = !$confirmationOpensAt || $now >= $confirmationOpensAt;
+        $isManuallyOpen = ($kegiatan['status'] ?? '') === 'Aktif' && (int) ($kegiatan['status_manual'] ?? 0) === 1;
+        $hasOpened = !$confirmationOpensAt || $now >= $confirmationOpensAt;
+        $hasEnded = $tanggalSelesai && $tanggalSelesai < $today;
+        $canConfirmAttendance = $hasOpened && (!$hasEnded || $isManuallyOpen);
 
         return [
             'date' => $tanggalPelaksanaan,
+            'end_date' => $tanggalSelesai,
             'starts_at' => $startsAt,
             'confirmation_opens_at' => $confirmationOpensAt,
             'confirmation_open_label' => $confirmationOpensAt ? $confirmationOpensAt->format('d/m/Y H:i') : 'sekarang',
             'can_confirm_attendance' => $canConfirmAttendance,
             'is_before_event' => $tanggalPelaksanaan && $tanggalPelaksanaan > $today,
             'is_before_confirmation' => !$canConfirmAttendance,
-            'is_event_day' => !$tanggalPelaksanaan || $tanggalPelaksanaan === $today,
-            'is_after_event' => $tanggalPelaksanaan && $tanggalPelaksanaan < $today
+            'is_event_day' => !$tanggalPelaksanaan || ($tanggalPelaksanaan <= $today && $tanggalSelesai >= $today),
+            'is_after_event' => $hasEnded
         ];
+    }
+
+    private function deleteSignatureFile($fileName)
+    {
+        $path = __DIR__ . '/../../public/uploads/' . basename((string) $fileName);
+        if ($fileName && is_file($path)) {
+            unlink($path);
+        }
     }
 
     private function eventStartsAt(array $kegiatan, $tanggalPelaksanaan)

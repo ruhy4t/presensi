@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../Services/ListFilterService.php';
+require_once __DIR__ . '/../Services/KegiatanStatusService.php';
 
 class RegistrationController
 {
@@ -108,9 +109,10 @@ class RegistrationController
         global $pdo;
 
         $user = AuthMiddleware::user();
+        KegiatanStatusService::ensureEndDateColumn($pdo);
 
         $stmt = $pdo->prepare("
-            SELECT pr.*, p.*, k.nama_kegiatan, k.tanggal_pelaksanaan, k.waktu_pelaksanaan, k.tempat_pelaksanaan,
+            SELECT pr.*, p.*, k.nama_kegiatan, k.tanggal_pelaksanaan, k.tanggal_selesai, k.waktu_pelaksanaan, k.tempat_pelaksanaan,
                    k.user_id AS kegiatan_user_id
             FROM participant_registrations pr
             INNER JOIN participants p ON p.id = pr.participant_id

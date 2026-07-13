@@ -25,10 +25,20 @@ function formatTanggalIndoReport($tgl) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Laporan Kegiatan</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs" defer></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 </head>
 
-<body class="bg-gray-50 p-8">
+<body class="bg-gray-50 text-gray-800 font-sans antialiased">
+    <div class="flex h-screen overflow-hidden" x-data="{ sidebarOpen: false }">
+        <?php $activeMenu = 'reports'; require __DIR__ . '/partials/sidebar.php'; ?>
+        <div class="flex flex-1 flex-col overflow-hidden">
+            <header class="flex items-center justify-between px-6 py-4 bg-white border-b shadow-sm lg:hidden">
+                <button @click="sidebarOpen = !sidebarOpen" class="text-gray-500 focus:outline-none"><i class="bi bi-list text-2xl"></i></button>
+                <span class="font-semibold text-lg">Laporan</span>
+                <div class="w-8"></div>
+            </header>
+            <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-6 md:p-8">
 
     <div class="max-w-6xl mx-auto">
         <div class="flex items-center justify-between mb-8">
@@ -114,7 +124,7 @@ function formatTanggalIndoReport($tgl) {
                                     </div>
                                 </td>
                                 <td class="px-6 py-4">
-                                    <div class="text-sm text-gray-800"><i class="bi bi-calendar-event mr-1 text-gray-400"></i> <?= formatTanggalIndoReport($k['tanggal_pelaksanaan'] ?? '-') ?></div>
+                                    <div class="text-sm text-gray-800"><i class="bi bi-calendar-event mr-1 text-gray-400"></i> <?= formatTanggalIndoReport($k['tanggal_pelaksanaan'] ?? '-') ?><?php if (!empty($k['tanggal_selesai']) && $k['tanggal_selesai'] !== $k['tanggal_pelaksanaan']): ?> s.d. <?= formatTanggalIndoReport($k['tanggal_selesai']) ?><?php endif; ?></div>
                                     <div class="text-xs text-gray-500 mt-1"><i class="bi bi-geo-alt mr-1 text-gray-400"></i> <?= htmlspecialchars($k['tempat_pelaksanaan'] ?? '-') ?></div>
                                 </td>
                                 <td class="px-6 py-4">
@@ -152,6 +162,9 @@ function formatTanggalIndoReport($tgl) {
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+            </main>
         </div>
     </div>
 
