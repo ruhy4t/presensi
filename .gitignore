@@ -13,3 +13,8 @@ public/uploads/*
 .DS_Store
 Thumbs.db
 
+/var/backups/
+
+# Database/archive backups must never be committed.
+tests/*_backup.sql
+tests/backup_*.zip

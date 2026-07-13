@@ -264,8 +264,13 @@ class KegiatanController
         global $pdo;
         $userId = $_SESSION['user_id'];
         $ip = $_SERVER['REMOTE_ADDR'];
-        $stmt = $pdo->prepare("INSERT INTO audit_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$userId, $action, $details, $ip]);
+        try {
+            $stmt = $pdo->prepare("INSERT INTO audit_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$userId, $action, $details, $ip]);
+        } catch (Throwable $e) {
+            // Audit logging must never make a successful kegiatan operation look failed.
+            error_log($e->getMessage());
+        }
     }
 
     private function ensureCatatanColumn(PDO $pdo)
