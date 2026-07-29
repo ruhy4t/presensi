@@ -247,7 +247,11 @@ SET confirmation_source = 'participant'
 WHERE status = 'attended' AND confirmation_source IS NULL;
 
 UPDATE attendances a
-INNER JOIN participants p ON p.nama_lengkap = a.nama AND p.hp = a.hp
+INNER JOIN participants p
+    ON CONVERT(p.nama_lengkap USING utf8mb4) COLLATE utf8mb4_unicode_ci
+       = CONVERT(a.nama USING utf8mb4) COLLATE utf8mb4_unicode_ci
+   AND CONVERT(p.hp USING utf8mb4) COLLATE utf8mb4_unicode_ci
+       = CONVERT(a.hp USING utf8mb4) COLLATE utf8mb4_unicode_ci
 INNER JOIN participant_registrations pr
     ON pr.participant_id = p.id AND pr.kegiatan_id = a.kegiatan_id
 SET a.registration_id = pr.id

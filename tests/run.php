@@ -269,6 +269,8 @@ test('admin attendance corrections require audit and preserve cancelled records'
     }
     assertContainsText("record_status = 'cancelled'", $controller);
     assertContainsText('confirmation_source', $migration);
+    assertContainsText('CONVERT(p.nama_lengkap USING utf8mb4) COLLATE utf8mb4_unicode_ci', $migration);
+    assertContainsText('CONVERT(a.nama USING utf8mb4) COLLATE utf8mb4_unicode_ci', $migration);
 });
 
 echo "\nResult: {$passed} passed, {$failed} failed.\n";
