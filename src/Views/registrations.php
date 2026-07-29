@@ -104,6 +104,7 @@ function registrationPageUrl($page, $kegiatanId, array $filters = []) {
                             <th class="px-4 py-3 text-sm font-semibold text-gray-600">Nama</th>
                             <th class="px-4 py-3 text-sm font-semibold text-gray-600">NIK</th>
                             <th class="px-4 py-3 text-sm font-semibold text-gray-600">Jabatan / Unit Kerja</th>
+                            <th class="px-4 py-3 text-sm font-semibold text-gray-600">Gelombang</th>
                             <th class="px-4 py-3 text-sm font-semibold text-gray-600">Token</th>
                             <th class="px-4 py-3 text-sm font-semibold text-gray-600">Status</th>
                             <th class="px-4 py-3 text-sm font-semibold text-gray-600">Biodata Diisi</th>
@@ -114,7 +115,7 @@ function registrationPageUrl($page, $kegiatanId, array $filters = []) {
                     <tbody class="divide-y divide-gray-100">
                         <?php if (empty($registrations)): ?>
                             <tr>
-                                <td colspan="8" class="px-4 py-12 text-center text-gray-500">
+                                <td colspan="9" class="px-4 py-12 text-center text-gray-500">
                                     <i class="bi bi-person-lines-fill text-3xl block mb-2 text-gray-300"></i>
                                     <?= $filters['q'] !== '' || $filters['status'] !== '' ? 'Tidak ada peserta yang sesuai dengan filter.' : 'Belum ada peserta pra-registrasi atau biodata.' ?>
                                 </td>
@@ -134,6 +135,9 @@ function registrationPageUrl($page, $kegiatanId, array $filters = []) {
                                     <div class="text-sm text-gray-900"><?= htmlspecialchars($row['jabatan']) ?></div>
                                     <div class="text-xs text-gray-500"><?= htmlspecialchars($row['unit_kerja']) ?></div>
                                 </td>
+                                <td class="px-4 py-3 text-sm font-semibold text-indigo-700">
+                                    <?= htmlspecialchars($row['gelombang_nama'] ?? '-') ?>
+                                </td>
                                 <td class="px-4 py-3">
                                     <span class="font-mono font-bold tracking-widest bg-gray-900 text-white px-3 py-1 rounded">
                                         <?= htmlspecialchars($row['token_code']) ?>
@@ -145,7 +149,15 @@ function registrationPageUrl($page, $kegiatanId, array $filters = []) {
                                     </span>
                                 </td>
                                 <td class="px-4 py-3 text-sm text-gray-600"><?= htmlspecialchars($row['biodata_submitted_at']) ?></td>
-                                <td class="px-4 py-3 text-sm text-gray-600"><?= htmlspecialchars($row['attendance_confirmed_at'] ?? '-') ?></td>
+                                <td class="px-4 py-3 text-sm text-gray-600">
+                                    <?= htmlspecialchars($row['attendance_confirmed_at'] ?? '-') ?>
+                                    <?php if ($row['attendance_distance_meters'] !== null): ?>
+                                        <div class="mt-1 text-xs font-semibold text-emerald-700">
+                                            <i class="bi bi-geo-alt-fill"></i>
+                                            <?= number_format((float) $row['attendance_distance_meters'], 0, ',', '.') ?> m
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="px-4 py-3 text-center">
                                     <a href="/biodata/print?id=<?= (int)$row['id'] ?>" target="_blank"
                                        class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-red-50 text-red-600 hover:bg-red-100"

@@ -1,5 +1,7 @@
 # Presensi
 
+Versi aplikasi: **1.1.0** (29 Juli 2026)
+
 Aplikasi presensi berbasis PHP untuk mengelola kegiatan, registrasi peserta,
 kehadiran, laporan, dan cetak biodata/daftar hadir.
 
@@ -45,6 +47,19 @@ Migration bersifat idempoten: aman dijalankan pada database lama maupun
 database baru, dan migration yang sudah tercatat tidak akan dijalankan ulang.
 Backup disimpan di `var/backups/`, di luar document root dan diabaikan Git.
 
+### Pembaruan versi 1.1.0
+
+- Radius lokasi opsional per kegiatan dengan validasi ulang jarak di server.
+- Penyimpanan koordinat, akurasi GPS, dan jarak sebagai bukti presensi.
+- Kegiatan per gelombang dan pilihan gelombang pada formulir biodata.
+- Gelombang tampil pada daftar peserta, biodata cetak, daftar hadir, dan ekspor.
+- Versi aplikasi tampil pada sidebar dan halaman presensi publik.
+
+Untuk pembaruan manual melalui phpMyAdmin, impor
+`migrations/2026_07_29_radius_gelombang.sql` sebelum mengunggah kode versi ini.
+Kegiatan lama tetap memiliki radius dan gelombang dalam keadaan nonaktif. Fitur
+tersebut dapat diaktifkan melalui menu **Edit Kegiatan**.
+
 ## Pemeriksaan Sebelum Deployment
 
 ```powershell
@@ -68,7 +83,7 @@ Urutan deployment yang disarankan:
 
 1. Jalankan regression checks.
 2. Backup database dan folder `public/uploads`.
-3. Jalankan migration.
+3. Jalankan migration (atau impor SQL migration terbaru melalui phpMyAdmin).
 4. Jalankan health check.
 5. Uji login, pembuatan kegiatan, registrasi, presensi, dan ekspor laporan.
 

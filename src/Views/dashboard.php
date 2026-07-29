@@ -52,6 +52,12 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                 : ''),
         'waktu_pelaksanaan' => htmlspecialchars($keg['waktu_pelaksanaan'] ?? '-'),
         'tempat_pelaksanaan' => htmlspecialchars($keg['tempat_pelaksanaan'] ?? ''),
+        'radius_enabled' => (int) ($keg['radius_enabled'] ?? 0),
+        'latitude' => $keg['latitude'] ?? '',
+        'longitude' => $keg['longitude'] ?? '',
+        'radius_meters' => $keg['radius_meters'] ?? 100,
+        'gelombang_enabled' => (int) ($keg['gelombang_enabled'] ?? 0),
+        'gelombang_names' => $keg['gelombang_names'] ?? '',
         'catatan' => htmlspecialchars($keg['catatan'] ?? ''),
         'pejabat_penanggung_jawab' => htmlspecialchars($keg['pejabat_penanggung_jawab'] ?? ''),
         'jabatan_penanggung_jawab' => htmlspecialchars($keg['jabatan_penanggung_jawab'] ?? ''),
@@ -214,6 +220,14 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                                         <span
                                             class="px-2.5 py-0.5 rounded-full text-xs font-medium"
                                             :class="kegiatan.status === 'Aktif' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'" x-text="kegiatan.status">
+                                        </span>
+                                        <span x-show="kegiatan.radius_enabled == 1"
+                                            class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                            <i class="bi bi-geo-alt-fill mr-1"></i>Radius
+                                        </span>
+                                        <span x-show="kegiatan.gelombang_enabled == 1"
+                                            class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                            <i class="bi bi-layers-fill mr-1"></i>Gelombang
                                         </span>
                                         <span
                                             class="px-2.5 py-0.5 rounded-full text-xs font-medium"
@@ -457,6 +471,51 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                                 <label class="block text-gray-700 text-sm font-bold mb-2">Tempat Pelaksanaan</label>
                                 <input type="text" name="tempat_pelaksanaan" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring focus:border-blue-500" placeholder="Contoh: Ruang Rapat Lt. 2">
                             </div>
+                            <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4"
+                                x-data="{ enabled: false, lat: '', lng: '', locating: false }">
+                                <label class="flex items-center gap-3 font-bold text-emerald-900">
+                                    <input type="checkbox" name="radius_enabled" value="1" x-model="enabled" class="h-4 w-4 rounded">
+                                    Batasi presensi berdasarkan radius lokasi
+                                </label>
+                                <div x-show="enabled" class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-700 mb-1">Latitude *</label>
+                                        <input type="number" step="0.0000001" min="-90" max="90" name="latitude" x-model="lat" :required="enabled"
+                                            class="w-full rounded border px-3 py-2" placeholder="-6.597147">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-700 mb-1">Longitude *</label>
+                                        <input type="number" step="0.0000001" min="-180" max="180" name="longitude" x-model="lng" :required="enabled"
+                                            class="w-full rounded border px-3 py-2" placeholder="106.806039">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-700 mb-1">Radius (meter) *</label>
+                                        <input type="number" min="10" max="5000" name="radius_meters" value="100" :required="enabled"
+                                            class="w-full rounded border px-3 py-2">
+                                    </div>
+                                    <div class="md:col-span-3">
+                                        <button type="button" :disabled="locating"
+                                            @click="locating=true; navigator.geolocation.getCurrentPosition(p => { lat=p.coords.latitude.toFixed(7); lng=p.coords.longitude.toFixed(7); locating=false }, () => { locating=false; alert('Lokasi tidak dapat dibaca. Pastikan izin lokasi aktif dan situs memakai HTTPS.') }, {enableHighAccuracy:true, timeout:10000})"
+                                            class="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                                            <i class="bi bi-crosshair mr-1"></i><span x-text="locating ? 'Membaca lokasi...' : 'Gunakan lokasi perangkat ini'"></span>
+                                        </button>
+                                        <p class="mt-2 text-xs text-emerald-800">Kegiatan lama tetap berjalan seperti biasa sampai fitur ini diaktifkan.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4" x-data="{ enabled: false }">
+                                <label class="flex items-center gap-3 font-bold text-indigo-900">
+                                    <input type="checkbox" name="gelombang_enabled" value="1" x-model="enabled" class="h-4 w-4 rounded">
+                                    Kegiatan dibagi menjadi beberapa gelombang
+                                </label>
+                                <div x-show="enabled" class="mt-4">
+                                    <label class="block text-sm font-bold text-gray-700 mb-1">Daftar Gelombang *</label>
+                                    <textarea name="gelombang_names" rows="4" :required="enabled"
+                                        class="w-full rounded border px-3 py-2"
+                                        placeholder="Gelombang 1&#10;Gelombang 2&#10;Gelombang 3"></textarea>
+                                    <p class="mt-1 text-xs text-indigo-800">Tulis satu nama gelombang per baris. Pilihan akan tampil pada formulir biodata.</p>
+                                </div>
+                            </div>
                             <div class="mb-4">
                                 <label class="block text-gray-700 text-sm font-bold mb-2">Catatan Internal</label>
                                 <textarea name="catatan" rows="3"
@@ -558,6 +617,45 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                             <div class="mb-4">
                                 <label class="block text-gray-700 text-sm font-bold mb-2">Tempat Pelaksanaan</label>
                                 <input type="text" name="tempat_pelaksanaan" x-model="editData.tempat_pelaksanaan" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring focus:border-blue-500">
+                            </div>
+                            <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                                <label class="flex items-center gap-3 font-bold text-emerald-900">
+                                    <input type="checkbox" name="radius_enabled" value="1" x-model="editData.radius_enabled" class="h-4 w-4 rounded">
+                                    Batasi presensi berdasarkan radius lokasi
+                                </label>
+                                <div x-show="editData.radius_enabled" class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-700 mb-1">Latitude *</label>
+                                        <input type="number" step="0.0000001" min="-90" max="90" name="latitude" x-model="editData.latitude" :required="!!editData.radius_enabled" class="w-full rounded border px-3 py-2">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-700 mb-1">Longitude *</label>
+                                        <input type="number" step="0.0000001" min="-180" max="180" name="longitude" x-model="editData.longitude" :required="!!editData.radius_enabled" class="w-full rounded border px-3 py-2">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-700 mb-1">Radius (meter) *</label>
+                                        <input type="number" min="10" max="5000" name="radius_meters" x-model="editData.radius_meters" :required="!!editData.radius_enabled" class="w-full rounded border px-3 py-2">
+                                    </div>
+                                    <div class="md:col-span-3">
+                                        <button type="button"
+                                            @click="navigator.geolocation.getCurrentPosition(p => { editData.latitude=p.coords.latitude.toFixed(7); editData.longitude=p.coords.longitude.toFixed(7) }, () => alert('Lokasi tidak dapat dibaca. Pastikan izin lokasi aktif dan situs memakai HTTPS.'), {enableHighAccuracy:true, timeout:10000})"
+                                            class="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">
+                                            <i class="bi bi-crosshair mr-1"></i>Perbarui dari lokasi perangkat
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+                                <label class="flex items-center gap-3 font-bold text-indigo-900">
+                                    <input type="checkbox" name="gelombang_enabled" value="1" x-model="editData.gelombang_enabled" class="h-4 w-4 rounded">
+                                    Kegiatan dibagi menjadi beberapa gelombang
+                                </label>
+                                <div x-show="editData.gelombang_enabled" class="mt-4">
+                                    <label class="block text-sm font-bold text-gray-700 mb-1">Daftar Gelombang *</label>
+                                    <textarea name="gelombang_names" rows="4" x-model="editData.gelombang_names" :required="!!editData.gelombang_enabled"
+                                        class="w-full rounded border px-3 py-2"></textarea>
+                                    <p class="mt-1 text-xs text-indigo-800">Satu nama per baris. Gelombang yang sudah dipakai peserta akan disimpan sebagai riwayat bila dihapus dari daftar aktif.</p>
+                                </div>
                             </div>
                             <div class="mb-4">
                                 <label class="block text-gray-700 text-sm font-bold mb-2">Catatan Internal</label>

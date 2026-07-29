@@ -68,9 +68,11 @@ class RegistrationController
         $offset = ($page - 1) * $perPage;
 
         $stmt = $pdo->prepare("
-            SELECT pr.*, p.nama_lengkap, p.nik, p.nip, p.jabatan, p.unit_kerja, p.hp, p.email
+            SELECT pr.*, p.nama_lengkap, p.nik, p.nip, p.jabatan, p.unit_kerja, p.hp, p.email,
+                   kg.nama AS gelombang_nama
             FROM participant_registrations pr
             INNER JOIN participants p ON p.id = pr.participant_id
+            LEFT JOIN kegiatan_gelombang kg ON kg.id = pr.gelombang_id
             WHERE {$whereSql}
             ORDER BY pr.created_at DESC
             LIMIT :limit OFFSET :offset
@@ -112,11 +114,13 @@ class RegistrationController
         KegiatanStatusService::ensureEndDateColumn($pdo);
 
         $stmt = $pdo->prepare("
-            SELECT pr.*, p.*, k.nama_kegiatan, k.tanggal_pelaksanaan, k.tanggal_selesai, k.waktu_pelaksanaan, k.tempat_pelaksanaan,
+            SELECT pr.*, p.*, kg.nama AS gelombang_nama,
+                   k.nama_kegiatan, k.tanggal_pelaksanaan, k.tanggal_selesai, k.waktu_pelaksanaan, k.tempat_pelaksanaan,
                    k.user_id AS kegiatan_user_id
             FROM participant_registrations pr
             INNER JOIN participants p ON p.id = pr.participant_id
             INNER JOIN kegiatan k ON k.id = pr.kegiatan_id
+            LEFT JOIN kegiatan_gelombang kg ON kg.id = pr.gelombang_id
             WHERE pr.id = ?
             LIMIT 1
         ");

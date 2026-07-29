@@ -13,7 +13,7 @@ session_start();
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 header('Referrer-Policy: same-origin');
-header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
+header('Permissions-Policy: geolocation=(self), microphone=(), camera=()');
 
 // Validasi Security Dasar
 if (empty($_SESSION['csrf_token'])) {

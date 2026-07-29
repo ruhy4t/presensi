@@ -267,6 +267,14 @@ $ttl = biodataValue($biodata['tempat_lahir']) . ' / ' . formatTanggalIndoBiodata
             <td class="colon">:</td>
             <td class="value"><?= biodataValue($biodata['email']) ?></td>
         </tr>
+        <?php if (!empty($biodata['gelombang_nama'])): ?>
+        <tr>
+            <td class="no">13.</td>
+            <td class="label">Gelombang Kehadiran</td>
+            <td class="colon">:</td>
+            <td class="value"><?= biodataValue($biodata['gelombang_nama']) ?></td>
+        </tr>
+        <?php endif; ?>
     </table>
 
     <div class="signature-wrap">

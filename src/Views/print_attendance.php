@@ -253,6 +253,7 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
                 <th class="col-nama">Nama Lengkap</th>
                 <th class="col-instansi">Instansi</th>
                 <th class="col-jabatan">Jabatan</th>
+                <th>Gelombang</th>
                 <th class="col-ttd">Tanda Tangan</th>
             </tr>
         </thead>
@@ -272,6 +273,7 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
                     <td class="col-jabatan">
                         <?= htmlspecialchars($row['jabatan']) ?>
                     </td>
+                    <td><?= htmlspecialchars($row['gelombang_nama'] ?? '-') ?></td>
                     <td class="col-ttd">
                         <img src="/uploads/<?= htmlspecialchars($row['signature_file']) ?>" class="signature-img" alt="TTD">
                     </td>

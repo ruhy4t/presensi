@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../Services/KegiatanStatusService.php';
 require_once __DIR__ . '/../Services/KegiatanUrlService.php';
+require_once __DIR__ . '/../Services/AttendanceLocationService.php';
 
 class AttendanceController
 {
@@ -60,6 +61,8 @@ class AttendanceController
             $isAfterEvent = $timing['is_after_event'];
             $confirmationOpenLabel = $timing['confirmation_open_label'];
             $needsBiodata = ($kegiatan['perlu_biodata'] ?? 'Ya') === 'Ya';
+            $gelombangOptions = $this->getGelombangOptions((int) $kegiatan['id']);
+            $radiusEnabled = AttendanceLocationService::isEnabled($kegiatan);
 
             require __DIR__ . '/../Views/attendance_form.php';
         } catch (PDOException $e) {
@@ -96,10 +99,12 @@ class AttendanceController
         try {
             $stmt = $pdo->prepare("
                 SELECT pr.id AS registration_id, pr.status AS registration_status,
-                       pr.biodata_submitted_at, pr.attendance_confirmed_at, p.*
+                       pr.biodata_submitted_at, pr.attendance_confirmed_at, pr.gelombang_id,
+                       kg.nama AS gelombang_nama, p.*
                 FROM participant_registrations pr
                 INNER JOIN participants p ON p.id = pr.participant_id
                 INNER JOIN kegiatan k ON k.id = pr.kegiatan_id
+                LEFT JOIN kegiatan_gelombang kg ON kg.id = pr.gelombang_id
                 WHERE pr.kegiatan_id = ? AND pr.token_code = ? AND LOWER(k.nomor_surat_undangan) = LOWER(?)
                 LIMIT 1
             ");
@@ -129,7 +134,9 @@ class AttendanceController
                     'email' => $row['email'],
                     'biodata_submitted_at' => $row['biodata_submitted_at'],
                     'attendance_confirmed_at' => $row['attendance_confirmed_at']
-                ]
+                ],
+                'gelombang_id' => $row['gelombang_id'],
+                'gelombang_nama' => $row['gelombang_nama']
             ]);
         } catch (PDOException $e) {
             error_log($e->getMessage());
@@ -197,6 +204,12 @@ class AttendanceController
             return;
         }
 
+        $gelombangId = $this->resolveGelombangId($kegiatan, $_POST['gelombang_id'] ?? null);
+        if ((int) ($kegiatan['gelombang_enabled'] ?? 0) === 1 && $gelombangId === null) {
+            $this->jsonError('Gelombang wajib dipilih sesuai undangan.');
+            return;
+        }
+
         $signatureFile = $this->saveSignature($signatureData);
         if (!$signatureFile) {
             $this->jsonError('Tanda tangan tidak valid atau gagal disimpan.');
@@ -207,7 +220,7 @@ class AttendanceController
             $pdo->beginTransaction();
 
             $participantId = $this->upsertParticipant($data, $signatureFile);
-            $registration = $this->upsertRegistration($kegiatanId, $participantId);
+            $registration = $this->upsertRegistration($kegiatanId, $participantId, $gelombangId);
 
             if ($timing['can_confirm_attendance']) {
                 if (empty($_POST['confirm_hadir'])) {
@@ -218,7 +231,8 @@ class AttendanceController
                 }
 
                 $participant = $this->getParticipant($participantId);
-                $confirmResult = $this->confirmAttendance($registration['id'], $kegiatanId, $participant, false);
+                $participant['gelombang_id'] = $registration['gelombang_id'] ?? $gelombangId;
+                $confirmResult = $this->confirmAttendance($registration['id'], $kegiatanId, $participant, false, $kegiatan);
                 if (!$confirmResult['ok']) {
                     $pdo->rollBack();
                     $this->deleteSignatureFile($signatureFile);
@@ -283,7 +297,7 @@ class AttendanceController
             $pdo->beginTransaction();
 
             $stmt = $pdo->prepare("
-                SELECT pr.id AS registration_id, pr.status, p.*
+                SELECT pr.id AS registration_id, pr.status, pr.gelombang_id, p.*
                 FROM participant_registrations pr
                 INNER JOIN participants p ON p.id = pr.participant_id
                 INNER JOIN kegiatan k ON k.id = pr.kegiatan_id
@@ -299,7 +313,7 @@ class AttendanceController
                 return;
             }
 
-            $result = $this->confirmAttendance($participant['registration_id'], $kegiatanId, $participant, true);
+            $result = $this->confirmAttendance($participant['registration_id'], $kegiatanId, $participant, true, $kegiatan);
             if (!$result['ok']) {
                 $pdo->rollBack();
                 $this->jsonError($result['message']);
@@ -319,9 +333,20 @@ class AttendanceController
         }
     }
 
-    private function confirmAttendance($registrationId, $kegiatanId, array $participant, $tokenUsed)
+    private function confirmAttendance($registrationId, $kegiatanId, array $participant, $tokenUsed, array $kegiatan)
     {
         global $pdo;
+
+        $locationResult = AttendanceLocationService::evaluate(
+            $kegiatan,
+            $_POST['latitude'] ?? null,
+            $_POST['longitude'] ?? null,
+            $_POST['accuracy'] ?? null
+        );
+        if (!$locationResult['ok']) {
+            return $locationResult;
+        }
+        $location = $locationResult['location'];
 
         $stmt = $pdo->prepare("SELECT status FROM participant_registrations WHERE id = ? LIMIT 1 FOR UPDATE");
         $stmt->execute([$registrationId]);
@@ -336,25 +361,41 @@ class AttendanceController
         }
 
         $stmt = $pdo->prepare("
-            INSERT INTO attendances (kegiatan_id, nama, instansi, jabatan, hp, signature_file)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO attendances
+                (kegiatan_id, gelombang_id, nama, instansi, jabatan, hp, signature_file,
+                 latitude, longitude, accuracy_meters, distance_meters)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $kegiatanId,
+            $participant['gelombang_id'] ?? null,
             $participant['nama_lengkap'],
             $participant['unit_kerja'],
             $participant['jabatan'],
             $participant['hp'],
-            $participant['signature_file']
+            $participant['signature_file'],
+            $location['latitude'] ?? null,
+            $location['longitude'] ?? null,
+            $location['accuracy'] ?? null,
+            $location['distance'] ?? null
         ]);
 
-        $sql = "UPDATE participant_registrations SET status = 'attended', attendance_confirmed_at = NOW()";
+        $sql = "UPDATE participant_registrations
+                SET status = 'attended', attendance_confirmed_at = NOW(),
+                    attendance_latitude = ?, attendance_longitude = ?,
+                    attendance_accuracy_meters = ?, attendance_distance_meters = ?";
         if ($tokenUsed) {
             $sql .= ", token_used_at = NOW()";
         }
         $sql .= " WHERE id = ?";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$registrationId]);
+        $stmt->execute([
+            $location['latitude'] ?? null,
+            $location['longitude'] ?? null,
+            $location['accuracy'] ?? null,
+            $location['distance'] ?? null,
+            $registrationId
+        ]);
 
         return ['ok' => true, 'message' => 'OK'];
     }
@@ -488,7 +529,7 @@ class AttendanceController
         return $pdo->lastInsertId();
     }
 
-    private function upsertRegistration($kegiatanId, $participantId)
+    private function upsertRegistration($kegiatanId, $participantId, ?int $gelombangId)
     {
         global $pdo;
 
@@ -497,22 +538,27 @@ class AttendanceController
         $existing = $stmt->fetch();
 
         if ($existing) {
-            $stmt = $pdo->prepare("UPDATE participant_registrations SET biodata_submitted_at = NOW() WHERE id = ?");
-            $stmt->execute([$existing['id']]);
+            if ($existing['status'] === 'attended' && (int) ($existing['gelombang_id'] ?? 0) !== (int) ($gelombangId ?? 0)) {
+                return $existing;
+            }
+            $stmt = $pdo->prepare("UPDATE participant_registrations SET gelombang_id = ?, biodata_submitted_at = NOW() WHERE id = ?");
+            $stmt->execute([$gelombangId, $existing['id']]);
+            $existing['gelombang_id'] = $gelombangId;
             return $existing;
         }
 
         $token = $this->generateUniqueToken($kegiatanId);
         $stmt = $pdo->prepare("
-            INSERT INTO participant_registrations (kegiatan_id, participant_id, token_code, biodata_submitted_at, token_generated_at)
-            VALUES (?, ?, ?, NOW(), NOW())
+            INSERT INTO participant_registrations (kegiatan_id, participant_id, gelombang_id, token_code, biodata_submitted_at, token_generated_at)
+            VALUES (?, ?, ?, ?, NOW(), NOW())
         ");
-        $stmt->execute([$kegiatanId, $participantId, $token]);
+        $stmt->execute([$kegiatanId, $participantId, $gelombangId, $token]);
 
         return [
             'id' => $pdo->lastInsertId(),
             'kegiatan_id' => $kegiatanId,
             'participant_id' => $participantId,
+            'gelombang_id' => $gelombangId,
             'token_code' => $token,
             'status' => 'registered'
         ];
@@ -585,6 +631,18 @@ class AttendanceController
             return;
         }
 
+        $locationResult = AttendanceLocationService::evaluate(
+            $kegiatan,
+            $_POST['latitude'] ?? null,
+            $_POST['longitude'] ?? null,
+            $_POST['accuracy'] ?? null
+        );
+        if (!$locationResult['ok']) {
+            $this->jsonError($locationResult['message']);
+            return;
+        }
+        $location = $locationResult['location'];
+
         $fileName = $this->saveSignature($signatureData);
         if (!$fileName) {
             $this->jsonError('Tanda tangan tidak valid.');
@@ -602,8 +660,17 @@ class AttendanceController
                 return;
             }
 
-            $stmt = $pdo->prepare("INSERT INTO attendances (kegiatan_id, nama, instansi, jabatan, hp, signature_file) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$kegiatanId, $nama, $instansi, $jabatan, $hp, $fileName]);
+            $stmt = $pdo->prepare("
+                INSERT INTO attendances
+                    (kegiatan_id, nama, instansi, jabatan, hp, signature_file,
+                     latitude, longitude, accuracy_meters, distance_meters)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([
+                $kegiatanId, $nama, $instansi, $jabatan, $hp, $fileName,
+                $location['latitude'] ?? null, $location['longitude'] ?? null,
+                $location['accuracy'] ?? null, $location['distance'] ?? null
+            ]);
             $pdo->commit();
 
             $this->jsonSuccess('Berhasil Check-In!');
@@ -649,6 +716,43 @@ class AttendanceController
         $stmt = $pdo->prepare("SELECT * FROM participants WHERE id = ? LIMIT 1");
         $stmt->execute([$participantId]);
         return $stmt->fetch();
+    }
+
+    private function getGelombangOptions(int $kegiatanId): array
+    {
+        global $pdo;
+
+        $stmt = $pdo->prepare("
+            SELECT id, nama
+            FROM kegiatan_gelombang
+            WHERE kegiatan_id = ? AND is_active = 1
+            ORDER BY sort_order, id
+        ");
+        $stmt->execute([$kegiatanId]);
+        return $stmt->fetchAll();
+    }
+
+    private function resolveGelombangId(array $kegiatan, mixed $gelombangId): ?int
+    {
+        global $pdo;
+
+        if ((int) ($kegiatan['gelombang_enabled'] ?? 0) !== 1) {
+            return null;
+        }
+
+        $id = filter_var($gelombangId, FILTER_VALIDATE_INT);
+        if ($id === false || $id < 1) {
+            return null;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT id FROM kegiatan_gelombang
+            WHERE id = ? AND kegiatan_id = ? AND is_active = 1
+            LIMIT 1
+        ");
+        $stmt->execute([$id, $kegiatan['id']]);
+
+        return $stmt->fetchColumn() ? (int) $id : null;
     }
 
     private function getEventTiming(array $kegiatan)

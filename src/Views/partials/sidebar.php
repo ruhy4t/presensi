@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../../../config/app.php';
 $activeMenu = $activeMenu ?? '';
 $sidebarBase = 'flex items-center px-4 py-3 rounded-lg transition-colors';
 $sidebarInactive = ' text-slate-300 hover:bg-slate-800 hover:text-white';
@@ -8,7 +9,10 @@ $sidebarActive = ' bg-blue-600 text-white shadow-lg shadow-blue-500/30';
     class="fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transition-transform transform lg:translate-x-0 lg:static lg:inset-0"
     :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
     <div class="flex items-center justify-center h-16 bg-slate-800 shadow-md">
-        <h1 class="text-xl font-bold tracking-wider">APP ABSENSI</h1>
+        <div class="text-center">
+            <h1 class="text-xl font-bold tracking-wider"><?= htmlspecialchars(APP_NAME) ?></h1>
+            <p class="text-[10px] font-semibold tracking-widest text-slate-400">v<?= htmlspecialchars(APP_VERSION) ?></p>
+        </div>
     </div>
     <nav class="mt-5 px-4 space-y-2">
         <a href="/dashboard" class="<?= $sidebarBase . ($activeMenu === 'dashboard' ? $sidebarActive : $sidebarInactive) ?>">

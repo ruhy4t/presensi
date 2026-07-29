@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../Services/KegiatanStatusService.php';
 require_once __DIR__ . '/../Services/KegiatanUrlService.php';
+require_once __DIR__ . '/../Services/AttendanceLocationService.php';
 
 class KegiatanController
 {
@@ -24,6 +25,7 @@ class KegiatanController
             if ($user['role'] === 'admin') {
                 $stmt = $pdo->prepare("
                     SELECT k.*, u.fullname as creator_name,
+                           (SELECT GROUP_CONCAT(kg.nama ORDER BY kg.sort_order SEPARATOR '\n') FROM kegiatan_gelombang kg WHERE kg.kegiatan_id = k.id AND kg.is_active = 1) as gelombang_names,
                            (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id) as attendance_count,
                            (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id) as registration_count,
                            (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id AND pr.status = 'attended') as confirmed_count,
@@ -37,6 +39,7 @@ class KegiatanController
             } else {
                 $stmt = $pdo->prepare("
                     SELECT k.*,
+                           (SELECT GROUP_CONCAT(kg.nama ORDER BY kg.sort_order SEPARATOR '\n') FROM kegiatan_gelombang kg WHERE kg.kegiatan_id = k.id AND kg.is_active = 1) as gelombang_names,
                            (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id) as attendance_count,
                            (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id) as registration_count,
                            (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id AND pr.status = 'attended') as confirmed_count,
@@ -74,6 +77,12 @@ class KegiatanController
         $tanggal_selesai = $schedule['end'];
         $waktu_pelaksanaan = $_POST['waktu_pelaksanaan'] ?? null;
         $tempat_pelaksanaan = $_POST['tempat_pelaksanaan'] ?? null;
+        $radius_enabled = !empty($_POST['radius_enabled']);
+        $latitude = trim($_POST['latitude'] ?? '');
+        $longitude = trim($_POST['longitude'] ?? '');
+        $radius_meters = trim($_POST['radius_meters'] ?? '');
+        $gelombang_enabled = !empty($_POST['gelombang_enabled']);
+        $gelombangNames = $this->parseGelombangNames($_POST['gelombang_names'] ?? '');
         $catatan = trim($_POST['catatan'] ?? '');
         $pejabat_penanggung_jawab = trim($_POST['pejabat_penanggung_jawab'] ?? '');
         $jabatan_penanggung_jawab = trim($_POST['jabatan_penanggung_jawab'] ?? '');
@@ -107,6 +116,29 @@ class KegiatanController
             exit;
         }
 
+        $locationError = AttendanceLocationService::validateConfiguration(
+            $radius_enabled,
+            $latitude,
+            $longitude,
+            $radius_meters
+        );
+        if ($locationError !== null) {
+            $_SESSION['flash_error'] = $locationError;
+            header('Location: /dashboard');
+            exit;
+        }
+
+        if ($gelombang_enabled && $perlu_biodata !== 'Ya') {
+            $_SESSION['flash_error'] = "Gelombang hanya dapat digunakan pada kegiatan yang memerlukan biodata.";
+            header('Location: /dashboard');
+            exit;
+        }
+        if ($gelombang_enabled && count($gelombangNames) < 1) {
+            $_SESSION['flash_error'] = "Isi minimal satu nama gelombang.";
+            header('Location: /dashboard');
+            exit;
+        }
+
         try {
             KegiatanStatusService::ensureManualStatusColumn($pdo);
             KegiatanUrlService::ensureTokenColumn($pdo);
@@ -116,12 +148,25 @@ class KegiatanController
             $status = KegiatanStatusService::automaticStatusForDate($tanggal_pelaksanaan, $tanggal_selesai);
 
             $attendanceToken = KegiatanUrlService::generateUniqueToken($pdo);
-            $stmt = $pdo->prepare("INSERT INTO kegiatan (user_id, nama_kegiatan, jenis_kegiatan, nomor_surat_undangan, perlu_biodata, tanggal_pelaksanaan, tanggal_selesai, waktu_pelaksanaan, tempat_pelaksanaan, catatan, pejabat_penanggung_jawab, jabatan_penanggung_jawab, nip_penanggung_jawab, status, status_manual, attendance_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)");
-            $stmt->execute([$user_id, $nama, $jenis_kegiatan, $nomor_surat_undangan ?: null, $perlu_biodata, $tanggal_pelaksanaan, $tanggal_selesai, $waktu_pelaksanaan, $tempat_pelaksanaan, $catatan ?: null, $pejabat_penanggung_jawab, $jabatan_penanggung_jawab, $nip_penanggung_jawab, $status, $attendanceToken]);
+            $pdo->beginTransaction();
+            $stmt = $pdo->prepare("INSERT INTO kegiatan (user_id, nama_kegiatan, jenis_kegiatan, nomor_surat_undangan, perlu_biodata, tanggal_pelaksanaan, tanggal_selesai, waktu_pelaksanaan, tempat_pelaksanaan, radius_enabled, latitude, longitude, radius_meters, gelombang_enabled, catatan, pejabat_penanggung_jawab, jabatan_penanggung_jawab, nip_penanggung_jawab, status, status_manual, attendance_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)");
+            $stmt->execute([
+                $user_id, $nama, $jenis_kegiatan, $nomor_surat_undangan ?: null, $perlu_biodata,
+                $tanggal_pelaksanaan, $tanggal_selesai, $waktu_pelaksanaan, $tempat_pelaksanaan,
+                $radius_enabled ? 1 : 0, $radius_enabled ? $latitude : null,
+                $radius_enabled ? $longitude : null, $radius_enabled ? (int) $radius_meters : null,
+                $gelombang_enabled ? 1 : 0, $catatan ?: null, $pejabat_penanggung_jawab,
+                $jabatan_penanggung_jawab, $nip_penanggung_jawab, $status, $attendanceToken
+            ]);
+            $this->syncGelombang((int) $pdo->lastInsertId(), $gelombang_enabled ? $gelombangNames : []);
+            $pdo->commit();
 
             $_SESSION['flash_success'] = "Kegiatan berhasil ditambahkan.";
             $this->logActivity("ADD_KEGIATAN", "Added: $nama");
         } catch (PDOException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             $_SESSION['flash_error'] = "Gagal menambah kegiatan.";
         }
 
@@ -150,6 +195,12 @@ class KegiatanController
         $tanggal_selesai = $schedule['end'];
         $waktu_pelaksanaan = $_POST['waktu_pelaksanaan'] ?? null;
         $tempat_pelaksanaan = $_POST['tempat_pelaksanaan'] ?? null;
+        $radius_enabled = !empty($_POST['radius_enabled']);
+        $latitude = trim($_POST['latitude'] ?? '');
+        $longitude = trim($_POST['longitude'] ?? '');
+        $radius_meters = trim($_POST['radius_meters'] ?? '');
+        $gelombang_enabled = !empty($_POST['gelombang_enabled']);
+        $gelombangNames = $this->parseGelombangNames($_POST['gelombang_names'] ?? '');
         $catatan = trim($_POST['catatan'] ?? '');
         $pejabat_penanggung_jawab = trim($_POST['pejabat_penanggung_jawab'] ?? '');
         $jabatan_penanggung_jawab = trim($_POST['jabatan_penanggung_jawab'] ?? '');
@@ -175,6 +226,28 @@ class KegiatanController
             header('Location: /dashboard');
             exit;
         }
+
+        $locationError = AttendanceLocationService::validateConfiguration(
+            $radius_enabled,
+            $latitude,
+            $longitude,
+            $radius_meters
+        );
+        if ($locationError !== null) {
+            $_SESSION['flash_error'] = $locationError;
+            header('Location: /dashboard');
+            exit;
+        }
+        if ($gelombang_enabled && $perlu_biodata !== 'Ya') {
+            $_SESSION['flash_error'] = "Gelombang hanya dapat digunakan pada kegiatan yang memerlukan biodata.";
+            header('Location: /dashboard');
+            exit;
+        }
+        if ($gelombang_enabled && count($gelombangNames) < 1) {
+            $_SESSION['flash_error'] = "Isi minimal satu nama gelombang.";
+            header('Location: /dashboard');
+            exit;
+        }
         
         $user_id = $_SESSION['user_id'];
         $user = AuthMiddleware::user();
@@ -195,7 +268,14 @@ class KegiatanController
                 exit;
             }
 
-            $params = [$nama, $jenis_kegiatan, $nomor_surat_undangan ?: null, $perlu_biodata, $tanggal_pelaksanaan, $tanggal_selesai, $waktu_pelaksanaan, $tempat_pelaksanaan, $catatan ?: null, $pejabat_penanggung_jawab, $jabatan_penanggung_jawab, $nip_penanggung_jawab];
+            $params = [
+                $nama, $jenis_kegiatan, $nomor_surat_undangan ?: null, $perlu_biodata,
+                $tanggal_pelaksanaan, $tanggal_selesai, $waktu_pelaksanaan, $tempat_pelaksanaan,
+                $radius_enabled ? 1 : 0, $radius_enabled ? $latitude : null,
+                $radius_enabled ? $longitude : null, $radius_enabled ? (int) $radius_meters : null,
+                $gelombang_enabled ? 1 : 0, $catatan ?: null, $pejabat_penanggung_jawab,
+                $jabatan_penanggung_jawab, $nip_penanggung_jawab
+            ];
             $statusSql = '';
 
             if ((int) ($kegiatan['status_manual'] ?? 0) === 0 && in_array($kegiatan['status'], ['Aktif', 'Non-Aktif'], true)) {
@@ -203,13 +283,19 @@ class KegiatanController
                 $params[] = KegiatanStatusService::automaticStatusForDate($tanggal_pelaksanaan, $tanggal_selesai);
             }
 
-            $stmt = $pdo->prepare("UPDATE kegiatan SET nama_kegiatan = ?, jenis_kegiatan = ?, nomor_surat_undangan = ?, perlu_biodata = ?, tanggal_pelaksanaan = ?, tanggal_selesai = ?, waktu_pelaksanaan = ?, tempat_pelaksanaan = ?, catatan = ?, pejabat_penanggung_jawab = ?, jabatan_penanggung_jawab = ?, nip_penanggung_jawab = ?$statusSql WHERE id = ?");
+            $pdo->beginTransaction();
+            $stmt = $pdo->prepare("UPDATE kegiatan SET nama_kegiatan = ?, jenis_kegiatan = ?, nomor_surat_undangan = ?, perlu_biodata = ?, tanggal_pelaksanaan = ?, tanggal_selesai = ?, waktu_pelaksanaan = ?, tempat_pelaksanaan = ?, radius_enabled = ?, latitude = ?, longitude = ?, radius_meters = ?, gelombang_enabled = ?, catatan = ?, pejabat_penanggung_jawab = ?, jabatan_penanggung_jawab = ?, nip_penanggung_jawab = ?$statusSql WHERE id = ?");
             $params[] = $id;
             $stmt->execute($params);
+            $this->syncGelombang((int) $id, $gelombang_enabled ? $gelombangNames : []);
+            $pdo->commit();
 
             $_SESSION['flash_success'] = "Kegiatan berhasil diperbarui.";
             $this->logActivity("EDIT_KEGIATAN", "Edited ID: $id");
         } catch (PDOException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             $_SESSION['flash_error'] = "Gagal memperbarui kegiatan.";
         }
 
@@ -288,6 +374,42 @@ class KegiatanController
         } catch (Throwable $e) {
             // Audit logging must never make a successful kegiatan operation look failed.
             error_log($e->getMessage());
+        }
+    }
+
+    private function parseGelombangNames(string $input): array
+    {
+        $names = [];
+        foreach (preg_split('/\R/u', $input) ?: [] as $line) {
+            $name = trim(preg_replace('/\s+/u', ' ', $line) ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $name = function_exists('mb_substr') ? mb_substr($name, 0, 100) : substr($name, 0, 100);
+            $key = function_exists('mb_strtolower') ? mb_strtolower($name) : strtolower($name);
+            $names[$key] = $name;
+            if (count($names) >= 50) {
+                break;
+            }
+        }
+
+        return array_values($names);
+    }
+
+    private function syncGelombang(int $kegiatanId, array $names): void
+    {
+        global $pdo;
+
+        $pdo->prepare("UPDATE kegiatan_gelombang SET is_active = 0 WHERE kegiatan_id = ?")
+            ->execute([$kegiatanId]);
+
+        $stmt = $pdo->prepare("
+            INSERT INTO kegiatan_gelombang (kegiatan_id, nama, sort_order, is_active)
+            VALUES (?, ?, ?, 1)
+            ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order), is_active = 1
+        ");
+        foreach ($names as $index => $name) {
+            $stmt->execute([$kegiatanId, $name, $index + 1]);
         }
     }
 

@@ -38,6 +38,7 @@ require_once dirname(__DIR__) . '/config/env.php';
 require_once dirname(__DIR__) . '/src/Services/KegiatanStatusService.php';
 require_once dirname(__DIR__) . '/src/Services/KegiatanUrlService.php';
 require_once dirname(__DIR__) . '/src/Services/ListFilterService.php';
+require_once dirname(__DIR__) . '/src/Services/AttendanceLocationService.php';
 require_once dirname(__DIR__) . '/scripts/sql.php';
 
 test('manual active status remains marked as manual', function (): void {
@@ -166,6 +167,55 @@ test('attendance writes lock identity rows before inserting', function (): void 
     }
     assertContainsText('LIMIT 1 FOR UPDATE', $controller);
     assertContainsText('uq_attendances_kegiatan_identity', file_get_contents(dirname(__DIR__) . '/migrations/2026_07_13_attendance_unique.sql'));
+});
+
+test('location distance calculation is accurate enough for attendance radius', function (): void {
+    $distance = AttendanceLocationService::distanceMeters(-6.597147, 106.806039, -6.597047, 106.806039);
+    if ($distance < 10 || $distance > 12) {
+        throw new RuntimeException('Unexpected location distance: ' . $distance);
+    }
+});
+
+test('radius validation rejects out-of-range and inaccurate locations', function (): void {
+    $kegiatan = [
+        'radius_enabled' => 1,
+        'latitude' => -6.597147,
+        'longitude' => 106.806039,
+        'radius_meters' => 100,
+    ];
+    assertSameValue(null, AttendanceLocationService::validateConfiguration(true, -6.597147, 106.806039, 100));
+    assertContainsText('10 sampai 5.000', AttendanceLocationService::validateConfiguration(true, -6.597147, 106.806039, 5));
+
+    $inside = AttendanceLocationService::evaluate($kegiatan, -6.597047, 106.806039, 15);
+    assertSameValue(true, $inside['ok']);
+
+    $outside = AttendanceLocationService::evaluate($kegiatan, -6.587147, 106.806039, 15);
+    assertSameValue(false, $outside['ok']);
+    assertContainsText('di luar radius', $outside['message']);
+
+    $inaccurate = AttendanceLocationService::evaluate($kegiatan, -6.597147, 106.806039, 150);
+    assertSameValue(false, $inaccurate['ok']);
+});
+
+test('radius and wave migration remains phpMyAdmin importable and indexed', function (): void {
+    $migration = file_get_contents(dirname(__DIR__) . '/migrations/2026_07_29_radius_gelombang.sql');
+    if ($migration === false) {
+        throw new RuntimeException('Radius migration cannot be read.');
+    }
+    foreach (['radius_enabled', 'kegiatan_gelombang', 'gelombang_id', 'attendance_distance_meters'] as $needle) {
+        assertContainsText($needle, $migration);
+    }
+    assertContainsText('idx_gelombang_kegiatan_active', $migration);
+    assertContainsText('idx_attendances_gelombang', $migration);
+});
+
+test('application version is visible in authenticated and public interfaces', function (): void {
+    $appConfig = file_get_contents(dirname(__DIR__) . '/config/app.php');
+    $sidebar = file_get_contents(dirname(__DIR__) . '/src/Views/partials/sidebar.php');
+    $attendanceView = file_get_contents(dirname(__DIR__) . '/src/Views/attendance_form.php');
+    assertContainsText("APP_VERSION = '1.1.0'", $appConfig);
+    assertContainsText('APP_VERSION', $sidebar);
+    assertContainsText('APP_VERSION', $attendanceView);
 });
 
 echo "\nResult: {$passed} passed, {$failed} failed.\n";

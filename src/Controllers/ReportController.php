@@ -100,7 +100,13 @@ class ReportController
         }
 
         // 2. Get Attendances
-        $stmt2 = $pdo->prepare("SELECT * FROM attendances WHERE kegiatan_id = ? ORDER BY created_at ASC");
+        $stmt2 = $pdo->prepare("
+            SELECT a.*, kg.nama AS gelombang_nama
+            FROM attendances a
+            LEFT JOIN kegiatan_gelombang kg ON kg.id = a.gelombang_id
+            WHERE a.kegiatan_id = ?
+            ORDER BY COALESCE(kg.sort_order, 65535), a.created_at ASC
+        ");
         $stmt2->execute([$kegiatanId]);
         $attendanceData = $stmt2->fetchAll();
 
@@ -128,7 +134,13 @@ class ReportController
         }
 
         // 2. Get Attendances
-        $stmt2 = $pdo->prepare("SELECT * FROM attendances WHERE kegiatan_id = ? ORDER BY created_at ASC");
+        $stmt2 = $pdo->prepare("
+            SELECT a.*, kg.nama AS gelombang_nama
+            FROM attendances a
+            LEFT JOIN kegiatan_gelombang kg ON kg.id = a.gelombang_id
+            WHERE a.kegiatan_id = ?
+            ORDER BY COALESCE(kg.sort_order, 65535), a.created_at ASC
+        ");
         $stmt2->execute([$kegiatanId]);
         $attendanceData = $stmt2->fetchAll();
 
@@ -139,7 +151,7 @@ class ReportController
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename=' . $filename . '.csv');
             $output = fopen('php://output', 'w');
-            fputcsv($output, ['No', 'Nama Lengkap', 'Instansi', 'Jabatan', 'No. HP / WA', 'Waktu Hadir']);
+            fputcsv($output, ['No', 'Nama Lengkap', 'Instansi', 'Jabatan', 'No. HP / WA', 'Gelombang', 'Jarak (meter)', 'Akurasi GPS (meter)', 'Waktu Hadir']);
             $no = 1;
             foreach ($attendanceData as $row) {
                 fputcsv($output, [
@@ -148,6 +160,9 @@ class ReportController
                     $row['instansi'],
                     $row['jabatan'],
                     $row['hp'],
+                    $row['gelombang_nama'] ?? '',
+                    $row['distance_meters'] ?? '',
+                    $row['accuracy_meters'] ?? '',
                     $row['created_at']
                 ]);
             }
@@ -157,7 +172,7 @@ class ReportController
             header("Content-Type: application/vnd.ms-excel; charset=utf-8");
             header("Content-Disposition: attachment; filename=" . $filename . ".xls");
             echo '<table border="1">';
-            echo '<tr><th>No</th><th>Nama Lengkap</th><th>Instansi</th><th>Jabatan</th><th>No. HP / WA</th><th>Waktu Hadir</th></tr>';
+            echo '<tr><th>No</th><th>Nama Lengkap</th><th>Instansi</th><th>Jabatan</th><th>No. HP / WA</th><th>Gelombang</th><th>Jarak (meter)</th><th>Akurasi GPS (meter)</th><th>Waktu Hadir</th></tr>';
             $no = 1;
             foreach ($attendanceData as $row) {
                 echo '<tr>';
@@ -166,6 +181,9 @@ class ReportController
                 echo '<td>' . htmlspecialchars($row['instansi']) . '</td>';
                 echo '<td>' . htmlspecialchars($row['jabatan']) . '</td>';
                 echo '<td>' . htmlspecialchars($row['hp']) . '</td>';
+                echo '<td>' . htmlspecialchars($row['gelombang_nama'] ?? '') . '</td>';
+                echo '<td>' . htmlspecialchars((string) ($row['distance_meters'] ?? '')) . '</td>';
+                echo '<td>' . htmlspecialchars((string) ($row['accuracy_meters'] ?? '')) . '</td>';
                 echo '<td>' . $row['created_at'] . '</td>';
                 echo '</tr>';
             }

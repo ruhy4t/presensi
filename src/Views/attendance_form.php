@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../../config/app.php';
 function formatTanggalIndoPublic($tgl) {
     if (!$tgl || $tgl === '-') return '-';
     if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $tgl)) {
@@ -49,6 +50,11 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     s.d. <?= formatTanggalIndoPublic($kegiatan['tanggal_selesai']) ?>
                 <?php endif; ?>
             </p>
+            <?php if ($radiusEnabled): ?>
+                <p class="mt-3 inline-flex items-center rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-bold text-emerald-50">
+                    <i class="bi bi-geo-alt-fill mr-1"></i>Presensi dibatasi radius <?= number_format((int) $kegiatan['radius_meters'], 0, ',', '.') ?> meter
+                </p>
+            <?php endif; ?>
         </div>
 
         <?php if ($useLegacyAttendance): ?>
@@ -185,7 +191,8 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                         <dl class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                             <div><dt class="font-semibold text-gray-500">NIP</dt><dd x-text="prefillData?.nip || '-'"></dd></div>
                             <div><dt class="font-semibold text-gray-500">TTL</dt><dd x-text="prefillData?.tempat_lahir + ', ' + prefillData?.tanggal_lahir"></dd></div>
-                            <div><dt class="font-semibold text-gray-500">No. HP</dt><dd x-text="prefillData?.hp"></dd></div>
+                             <div><dt class="font-semibold text-gray-500">No. HP</dt><dd x-text="prefillData?.hp"></dd></div>
+                             <div x-show="prefillGelombang"><dt class="font-semibold text-gray-500">Gelombang</dt><dd x-text="prefillGelombang"></dd></div>
                             <div class="md:col-span-2"><dt class="font-semibold text-gray-500">Alamat Unit Kerja</dt><dd x-text="prefillData?.alamat_unit_kerja"></dd></div>
                             <div class="md:col-span-2"><dt class="font-semibold text-gray-500">Alamat Rumah</dt><dd x-text="prefillData?.alamat_rumah || '-' "></dd></div>
                         </dl>
@@ -207,7 +214,20 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
             <div x-show="activeTab === 'biodata'">
                 <form @submit.prevent="submitBiodata" class="space-y-5">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
-                    <input type="hidden" name="kegiatan_id" value="<?= (int)$kegiatan['id'] ?>">
+                     <input type="hidden" name="kegiatan_id" value="<?= (int)$kegiatan['id'] ?>">
+
+                    <?php if ((int) ($kegiatan['gelombang_enabled'] ?? 0) === 1): ?>
+                        <div class="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+                            <label class="block text-sm font-bold text-indigo-900 mb-1">Gelombang sesuai undangan *</label>
+                            <select x-model="form.gelombang_id" class="field bg-white" required>
+                                <option value="">Pilih gelombang</option>
+                                <?php foreach ($gelombangOptions as $gelombang): ?>
+                                    <option value="<?= (int) $gelombang['id'] ?>"><?= htmlspecialchars($gelombang['nama']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="mt-1 text-xs text-indigo-700">Pastikan pilihan sama dengan gelombang yang tercantum pada undangan.</p>
+                        </div>
+                    <?php endif; ?>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div class="md:col-span-2">
@@ -321,9 +341,43 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                 Kembali ke Form
             </button>
         </div>
+        <p class="bg-gray-50 py-3 text-center text-[11px] font-semibold tracking-wide text-gray-400">
+            <?= htmlspecialchars(APP_NAME) ?> v<?= htmlspecialchars(APP_VERSION) ?>
+        </p>
     </div>
 
     <script>
+        const attendanceRadiusEnabled = <?= $radiusEnabled ? 'true' : 'false' ?>;
+
+        function requestAttendanceLocation(required = true) {
+            if (!attendanceRadiusEnabled || !required) {
+                return Promise.resolve(null);
+            }
+            if (!window.isSecureContext || !navigator.geolocation) {
+                return Promise.reject(new Error('Lokasi hanya dapat dibaca melalui HTTPS dan browser yang mendukung GPS.'));
+            }
+
+            return new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(
+                    position => resolve(position.coords),
+                    error => {
+                        const message = error.code === 1
+                            ? 'Izin lokasi ditolak. Izinkan akses lokasi pada browser untuk melakukan presensi.'
+                            : 'Lokasi belum dapat dibaca. Aktifkan GPS, tunggu hingga akurat, lalu coba kembali.';
+                        reject(new Error(message));
+                    },
+                    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+                );
+            });
+        }
+
+        function appendAttendanceLocation(formData, coords) {
+            if (!coords) return;
+            formData.append('latitude', coords.latitude.toFixed(7));
+            formData.append('longitude', coords.longitude.toFixed(7));
+            formData.append('accuracy', coords.accuracy.toFixed(2));
+        }
+
         document.addEventListener('alpine:init', () => {
             Alpine.data('legacyAttendanceForm', () => ({
                 form: {
@@ -385,7 +439,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     return document.querySelector('[name="kegiatan_id"]').value;
                 },
 
-                submitLegacy() {
+                async submitLegacy() {
                     if (this.signaturePad.isEmpty()) {
                         this.errorMessage = 'Tanda tangan wajib diisi.';
                         return;
@@ -394,6 +448,15 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     this.loading = true;
                     this.errorMessage = '';
                     this.successMessage = '';
+
+                    let coords;
+                    try {
+                        coords = await requestAttendanceLocation();
+                    } catch (error) {
+                        this.loading = false;
+                        this.errorMessage = error.message;
+                        return;
+                    }
 
                     const formData = new FormData();
                     formData.append('mode', 'legacy');
@@ -404,6 +467,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     formData.append('jabatan', this.form.jabatan);
                     formData.append('hp', this.form.hp);
                     formData.append('signature', this.signaturePad.toDataURL('image/png'));
+                    appendAttendanceLocation(formData, coords);
 
                     fetch('/attendance/store', { method: 'POST', body: formData })
                         .then(response => response.json())
@@ -449,6 +513,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     alamat_rumah: '',
                     hp: '',
                     email: '',
+                    gelombang_id: '',
                     confirm_hadir: <?= $eventMode === 'before' ? 'false' : 'false' ?>
                 },
                 tokenForm: {
@@ -457,6 +522,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                 },
                 prefillData: null,
                 prefillStatus: null,
+                prefillGelombang: null,
                 signaturePad: null,
                 loading: false,
                 errorMessage: '',
@@ -517,7 +583,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     return document.querySelector('[name="kegiatan_id"]').value;
                 },
 
-                submitBiodata() {
+                async submitBiodata() {
                     if (this.signaturePad.isEmpty()) {
                         this.errorMessage = 'Tanda tangan wajib diisi.';
                         return;
@@ -533,6 +599,15 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     this.successMessage = '';
                     this.tokenResult = '';
 
+                    let coords;
+                    try {
+                        coords = await requestAttendanceLocation(this.eventMode !== 'before');
+                    } catch (error) {
+                        this.loading = false;
+                        this.errorMessage = error.message;
+                        return;
+                    }
+
                     const formData = new FormData();
                     formData.append('mode', 'biodata');
                     formData.append('kegiatan_id', this.kegiatanId());
@@ -541,6 +616,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                         formData.append(key, this.form[key] === true ? '1' : this.form[key]);
                     });
                     formData.append('signature', this.signaturePad.toDataURL('image/png'));
+                    appendAttendanceLocation(formData, coords);
 
                     fetch('/attendance/store', { method: 'POST', body: formData })
                         .then(response => response.json())
@@ -567,6 +643,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     this.successMessage = '';
                     this.prefillData = null;
                     this.prefillStatus = null;
+                    this.prefillGelombang = null;
 
                     const formData = new FormData();
                     formData.append('kegiatan_id', this.kegiatanId());
@@ -581,6 +658,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                             if (data.status === 'success') {
                                 this.prefillData = data.participant;
                                 this.prefillStatus = data.registration_status;
+                                this.prefillGelombang = data.gelombang_nama || null;
                                 this.successMessage = data.message;
                             } else {
                                 this.errorMessage = data.message;
@@ -592,10 +670,19 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                         });
                 },
 
-                confirmTokenAttendance() {
+                async confirmTokenAttendance() {
                     this.loading = true;
                     this.errorMessage = '';
                     this.successMessage = '';
+
+                    let coords;
+                    try {
+                        coords = await requestAttendanceLocation();
+                    } catch (error) {
+                        this.loading = false;
+                        this.errorMessage = error.message;
+                        return;
+                    }
 
                     const formData = new FormData();
                     formData.append('mode', 'token_confirm');
@@ -604,6 +691,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     formData.append('token', this.tokenForm.token);
                     formData.append('nomor_surat_undangan', this.tokenForm.nomor_surat_undangan);
                     formData.append('confirm_hadir', '1');
+                    appendAttendanceLocation(formData, coords);
 
                     fetch('/attendance/store', { method: 'POST', body: formData })
                         .then(response => response.json())
