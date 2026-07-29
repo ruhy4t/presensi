@@ -40,7 +40,7 @@ class KegiatanStatusService
             WHERE status = 'Non-Aktif'
               AND status_manual = 0
               AND tanggal_selesai IS NULL
-              AND tanggal_pelaksanaan IN (?, ?)
+              AND CAST(tanggal_pelaksanaan AS CHAR) IN (?, ?)
         ");
         $stmt->execute([$todayIndo, $todayIndoNoZero]);
 

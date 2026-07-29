@@ -274,6 +274,15 @@ $ttl = biodataValue($biodata['tempat_lahir']) . ' / ' . formatTanggalIndoBiodata
             <td class="colon">:</td>
             <td class="value"><?= biodataValue($biodata['gelombang_nama']) ?></td>
         </tr>
+        <tr>
+            <td class="no">14.</td>
+            <td class="label">Jadwal Gelombang</td>
+            <td class="colon">:</td>
+            <td class="value">
+                <?= formatTanggalIndoBiodata($biodata['gelombang_tanggal']) ?>,
+                <?= htmlspecialchars(substr((string) $biodata['gelombang_waktu_mulai'], 0, 5)) ?>–<?= htmlspecialchars(substr((string) $biodata['gelombang_waktu_selesai'], 0, 5)) ?> WIB
+            </td>
+        </tr>
         <?php endif; ?>
     </table>
 

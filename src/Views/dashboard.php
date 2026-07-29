@@ -58,6 +58,18 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
         'radius_meters' => $keg['radius_meters'] ?? 100,
         'gelombang_enabled' => (int) ($keg['gelombang_enabled'] ?? 0),
         'gelombang_names' => $keg['gelombang_names'] ?? '',
+        'gelombang_data' => array_map(static function (array $wave): array {
+            return [
+                'id' => (int) $wave['id'],
+                'nama' => $wave['nama'] ?? '',
+                'tanggal' => $wave['tanggal'] ?? '',
+                'waktu_mulai' => $wave['waktu_mulai'] ?? '',
+                'waktu_selesai' => $wave['waktu_selesai'] ?? '',
+                'presensi_mulai' => $wave['presensi_mulai'] ?? '',
+                'presensi_selesai' => $wave['presensi_selesai'] ?? '',
+                'kuota' => $wave['kuota'] ?? '',
+            ];
+        }, $keg['gelombang_data'] ?? []),
         'catatan' => htmlspecialchars($keg['catatan'] ?? ''),
         'pejabat_penanggung_jawab' => htmlspecialchars($keg['pejabat_penanggung_jawab'] ?? ''),
         'jabatan_penanggung_jawab' => htmlspecialchars($keg['jabatan_penanggung_jawab'] ?? ''),
@@ -503,17 +515,58 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                                     </div>
                                 </div>
                             </div>
-                            <div class="mb-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4" x-data="{ enabled: false }">
+                            <div class="mb-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4"
+                                x-data="{ enabled: false, waves: [{nama:'', tanggal:'', waktu_mulai:'', waktu_selesai:'', presensi_mulai:'', presensi_selesai:'', kuota:''}] }">
                                 <label class="flex items-center gap-3 font-bold text-indigo-900">
                                     <input type="checkbox" name="gelombang_enabled" value="1" x-model="enabled" class="h-4 w-4 rounded">
                                     Kegiatan dibagi menjadi beberapa gelombang
                                 </label>
-                                <div x-show="enabled" class="mt-4">
-                                    <label class="block text-sm font-bold text-gray-700 mb-1">Daftar Gelombang *</label>
-                                    <textarea name="gelombang_names" rows="4" :required="enabled"
-                                        class="w-full rounded border px-3 py-2"
-                                        placeholder="Gelombang 1&#10;Gelombang 2&#10;Gelombang 3"></textarea>
-                                    <p class="mt-1 text-xs text-indigo-800">Tulis satu nama gelombang per baris. Pilihan akan tampil pada formulir biodata.</p>
+                                <div x-show="enabled" class="mt-4 space-y-3">
+                                    <template x-for="(wave, index) in waves" :key="index">
+                                        <div class="rounded-lg border border-indigo-200 bg-white p-3">
+                                            <div class="mb-3 flex items-center justify-between">
+                                                <strong class="text-sm text-indigo-900" x-text="'Gelombang ' + (index + 1)"></strong>
+                                                <button type="button" x-show="waves.length > 1" @click="waves.splice(index, 1)"
+                                                    class="text-xs font-bold text-red-600">Hapus</button>
+                                            </div>
+                                            <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+                                                <input type="hidden" name="wave_id[]" value="">
+                                                <div class="md:col-span-2">
+                                                    <label class="block text-xs font-bold text-gray-700 mb-1">Nama *</label>
+                                                    <input name="wave_name[]" x-model="wave.nama" :required="enabled" class="w-full rounded border px-3 py-2" placeholder="Gelombang 1">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-bold text-gray-700 mb-1">Tanggal *</label>
+                                                    <input type="date" name="wave_date[]" x-model="wave.tanggal" :required="enabled" class="w-full rounded border px-3 py-2">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-bold text-gray-700 mb-1">Kuota</label>
+                                                    <input type="number" min="1" max="100000" name="wave_quota[]" x-model="wave.kuota" class="w-full rounded border px-3 py-2" placeholder="Opsional">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-bold text-gray-700 mb-1">Kegiatan Mulai *</label>
+                                                    <input type="time" name="wave_start[]" x-model="wave.waktu_mulai" :required="enabled" class="w-full rounded border px-3 py-2">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-bold text-gray-700 mb-1">Kegiatan Selesai *</label>
+                                                    <input type="time" name="wave_end[]" x-model="wave.waktu_selesai" :required="enabled" class="w-full rounded border px-3 py-2">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-bold text-gray-700 mb-1">Presensi Dibuka *</label>
+                                                    <input type="time" name="wave_checkin_start[]" x-model="wave.presensi_mulai" :required="enabled" class="w-full rounded border px-3 py-2">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-bold text-gray-700 mb-1">Presensi Ditutup *</label>
+                                                    <input type="time" name="wave_checkin_end[]" x-model="wave.presensi_selesai" :required="enabled" class="w-full rounded border px-3 py-2">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <button type="button" @click="waves.push({nama:'', tanggal:'', waktu_mulai:'', waktu_selesai:'', presensi_mulai:'', presensi_selesai:'', kuota:''})"
+                                        class="rounded-lg bg-indigo-700 px-3 py-2 text-sm font-semibold text-white">
+                                        <i class="bi bi-plus-lg mr-1"></i>Tambah Gelombang
+                                    </button>
+                                    <p class="text-xs text-indigo-800">Tanggal utama kegiatan otomatis mengikuti tanggal pertama sampai terakhir dari seluruh gelombang.</p>
                                 </div>
                             </div>
                             <div class="mb-4">
@@ -556,7 +609,7 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
 
         <!-- Modal Edit Kegiatan (Dipindah ke dalam scope main atau bisa juga diakses dengan custom event) -->
         <!-- Karena Alpine x-data tidak tembus, kita ubah Edit Modal menggunakan event listener seperti Add Modal -->
-        <div x-data="{ openEdit: false, editData: {} }" @open-edit-modal.window="editData = $event.detail; openEdit = true" x-show="openEdit" class="fixed inset-0 z-50 overflow-y-auto" style="display: none;">
+        <div x-data="{ openEdit: false, editData: {} }" @open-edit-modal.window="editData = $event.detail; if (!Array.isArray(editData.gelombang_data)) editData.gelombang_data = []; openEdit = true" x-show="openEdit" class="fixed inset-0 z-50 overflow-y-auto" style="display: none;">
             <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
                 <div class="fixed inset-0 transition-opacity" aria-hidden="true" @click="openEdit = false">
                     <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
@@ -651,10 +704,54 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                                     Kegiatan dibagi menjadi beberapa gelombang
                                 </label>
                                 <div x-show="editData.gelombang_enabled" class="mt-4">
-                                    <label class="block text-sm font-bold text-gray-700 mb-1">Daftar Gelombang *</label>
-                                    <textarea name="gelombang_names" rows="4" x-model="editData.gelombang_names" :required="!!editData.gelombang_enabled"
-                                        class="w-full rounded border px-3 py-2"></textarea>
-                                    <p class="mt-1 text-xs text-indigo-800">Satu nama per baris. Gelombang yang sudah dipakai peserta akan disimpan sebagai riwayat bila dihapus dari daftar aktif.</p>
+                                    <div class="space-y-3">
+                                        <template x-for="(wave, index) in editData.gelombang_data" :key="wave.id || index">
+                                            <div class="rounded-lg border border-indigo-200 bg-white p-3">
+                                                <div class="mb-3 flex items-center justify-between">
+                                                    <strong class="text-sm text-indigo-900" x-text="'Gelombang ' + (index + 1)"></strong>
+                                                    <button type="button" x-show="editData.gelombang_data.length > 1" @click="editData.gelombang_data.splice(index, 1)"
+                                                        class="text-xs font-bold text-red-600">Hapus</button>
+                                                </div>
+                                                <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+                                                    <input type="hidden" name="wave_id[]" :value="wave.id || ''">
+                                                    <div class="md:col-span-2">
+                                                        <label class="block text-xs font-bold text-gray-700 mb-1">Nama *</label>
+                                                        <input name="wave_name[]" x-model="wave.nama" :required="!!editData.gelombang_enabled" class="w-full rounded border px-3 py-2">
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-xs font-bold text-gray-700 mb-1">Tanggal *</label>
+                                                        <input type="date" name="wave_date[]" x-model="wave.tanggal" :required="!!editData.gelombang_enabled" class="w-full rounded border px-3 py-2">
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-xs font-bold text-gray-700 mb-1">Kuota</label>
+                                                        <input type="number" min="1" max="100000" name="wave_quota[]" x-model="wave.kuota" class="w-full rounded border px-3 py-2">
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-xs font-bold text-gray-700 mb-1">Kegiatan Mulai *</label>
+                                                        <input type="time" name="wave_start[]" x-model="wave.waktu_mulai" :required="!!editData.gelombang_enabled" class="w-full rounded border px-3 py-2">
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-xs font-bold text-gray-700 mb-1">Kegiatan Selesai *</label>
+                                                        <input type="time" name="wave_end[]" x-model="wave.waktu_selesai" :required="!!editData.gelombang_enabled" class="w-full rounded border px-3 py-2">
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-xs font-bold text-gray-700 mb-1">Presensi Dibuka *</label>
+                                                        <input type="time" name="wave_checkin_start[]" x-model="wave.presensi_mulai" :required="!!editData.gelombang_enabled" class="w-full rounded border px-3 py-2">
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-xs font-bold text-gray-700 mb-1">Presensi Ditutup *</label>
+                                                        <input type="time" name="wave_checkin_end[]" x-model="wave.presensi_selesai" :required="!!editData.gelombang_enabled" class="w-full rounded border px-3 py-2">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <button type="button"
+                                            @click="if (!editData.gelombang_data) editData.gelombang_data=[]; editData.gelombang_data.push({id:null,nama:'',tanggal:'',waktu_mulai:'',waktu_selesai:'',presensi_mulai:'',presensi_selesai:'',kuota:''})"
+                                            class="rounded-lg bg-indigo-700 px-3 py-2 text-sm font-semibold text-white">
+                                            <i class="bi bi-plus-lg mr-1"></i>Tambah Gelombang
+                                        </button>
+                                        <p class="text-xs text-indigo-800">Tanggal kegiatan mengikuti rentang seluruh gelombang. Gelombang yang sudah dipakai tetap tersimpan sebagai riwayat jika dinonaktifkan.</p>
+                                    </div>
                                 </div>
                             </div>
                             <div class="mb-4">

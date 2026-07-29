@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../Services/KegiatanStatusService.php';
 require_once __DIR__ . '/../Services/KegiatanUrlService.php';
 require_once __DIR__ . '/../Services/AttendanceLocationService.php';
+require_once __DIR__ . '/../Services/WaveScheduleService.php';
 
 class AttendanceController
 {
@@ -100,7 +101,10 @@ class AttendanceController
             $stmt = $pdo->prepare("
                 SELECT pr.id AS registration_id, pr.status AS registration_status,
                        pr.biodata_submitted_at, pr.attendance_confirmed_at, pr.gelombang_id,
-                       kg.nama AS gelombang_nama, p.*
+                       kg.nama AS gelombang_nama, kg.tanggal AS gelombang_tanggal,
+                       kg.waktu_mulai AS gelombang_waktu_mulai, kg.waktu_selesai AS gelombang_waktu_selesai,
+                       kg.presensi_mulai AS gelombang_presensi_mulai,
+                       kg.presensi_selesai AS gelombang_presensi_selesai, p.*
                 FROM participant_registrations pr
                 INNER JOIN participants p ON p.id = pr.participant_id
                 INNER JOIN kegiatan k ON k.id = pr.kegiatan_id
@@ -114,6 +118,15 @@ class AttendanceController
             if (!$row) {
                 $this->jsonError('Data tidak ditemukan. Periksa kembali token dan nomor surat undangan.');
                 return;
+            }
+
+            $waveTiming = null;
+            if (!empty($row['gelombang_id'])) {
+                $waveTiming = WaveScheduleService::timing([
+                    'tanggal' => $row['gelombang_tanggal'],
+                    'presensi_mulai' => $row['gelombang_presensi_mulai'],
+                    'presensi_selesai' => $row['gelombang_presensi_selesai'],
+                ]);
             }
 
             $this->jsonSuccess('Data ditemukan.', [
@@ -136,7 +149,9 @@ class AttendanceController
                     'attendance_confirmed_at' => $row['attendance_confirmed_at']
                 ],
                 'gelombang_id' => $row['gelombang_id'],
-                'gelombang_nama' => $row['gelombang_nama']
+                'gelombang_nama' => $row['gelombang_nama'],
+                'gelombang_jadwal' => $waveTiming['label'] ?? null,
+                'gelombang_can_confirm' => $waveTiming['can_confirm'] ?? null
             ]);
         } catch (PDOException $e) {
             error_log($e->getMessage());
@@ -209,6 +224,7 @@ class AttendanceController
             $this->jsonError('Gelombang wajib dipilih sesuai undangan.');
             return;
         }
+        $canConfirmNow = $this->canParticipantConfirmNow($kegiatan, $gelombangId);
 
         $signatureFile = $this->saveSignature($signatureData);
         if (!$signatureFile) {
@@ -222,7 +238,7 @@ class AttendanceController
             $participantId = $this->upsertParticipant($data, $signatureFile);
             $registration = $this->upsertRegistration($kegiatanId, $participantId, $gelombangId);
 
-            if ($timing['can_confirm_attendance']) {
+            if ($canConfirmNow) {
                 if (empty($_POST['confirm_hadir'])) {
                     $pdo->rollBack();
                     $this->deleteSignatureFile($signatureFile);
@@ -260,6 +276,12 @@ class AttendanceController
             $this->deleteSignatureFile($signatureFile);
             error_log($e->getMessage());
             $this->jsonError($e->getCode() === '23000' ? 'Peserta sudah tercatat pada kegiatan ini.' : 'Terjadi kesalahan sistem saat menyimpan biodata.');
+        } catch (RuntimeException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $this->deleteSignatureFile($signatureFile);
+            $this->jsonError($e->getMessage());
         }
     }
 
@@ -284,12 +306,6 @@ class AttendanceController
         $kegiatan = $this->getKegiatan($kegiatanId);
         if (!$kegiatan) {
             $this->jsonError('Kegiatan tidak ditemukan atau sudah ditutup.');
-            return;
-        }
-
-        $timing = $this->getEventTiming($kegiatan);
-        if (!$timing['can_confirm_attendance']) {
-            $this->jsonError('Presensi belum dibuka. Konfirmasi kehadiran baru dapat dilakukan mulai ' . $timing['confirmation_open_label'] . ' WIB.');
             return;
         }
 
@@ -337,6 +353,11 @@ class AttendanceController
     {
         global $pdo;
 
+        $scheduleResult = $this->participantScheduleResult($kegiatan, $participant['gelombang_id'] ?? null);
+        if (!$scheduleResult['ok']) {
+            return $scheduleResult;
+        }
+
         $locationResult = AttendanceLocationService::evaluate(
             $kegiatan,
             $_POST['latitude'] ?? null,
@@ -359,15 +380,19 @@ class AttendanceController
         if ($registration['status'] === 'attended') {
             return ['ok' => false, 'message' => 'Peserta sudah tercatat hadir.'];
         }
+        if ($registration['status'] === 'cancelled') {
+            return ['ok' => false, 'message' => 'Kehadiran Anda telah dibatalkan panitia. Hubungi panitia untuk konfirmasi ulang.'];
+        }
 
         $stmt = $pdo->prepare("
             INSERT INTO attendances
-                (kegiatan_id, gelombang_id, nama, instansi, jabatan, hp, signature_file,
-                 latitude, longitude, accuracy_meters, distance_meters)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (kegiatan_id, registration_id, gelombang_id, nama, instansi, jabatan, hp, signature_file,
+                 latitude, longitude, accuracy_meters, distance_meters, record_status, confirmation_source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 'participant')
         ");
         $stmt->execute([
             $kegiatanId,
+            $registrationId,
             $participant['gelombang_id'] ?? null,
             $participant['nama_lengkap'],
             $participant['unit_kerja'],
@@ -383,7 +408,10 @@ class AttendanceController
         $sql = "UPDATE participant_registrations
                 SET status = 'attended', attendance_confirmed_at = NOW(),
                     attendance_latitude = ?, attendance_longitude = ?,
-                    attendance_accuracy_meters = ?, attendance_distance_meters = ?";
+                    attendance_accuracy_meters = ?, attendance_distance_meters = ?,
+                    confirmation_source = 'participant', confirmed_by_user_id = NULL,
+                    confirmation_note = NULL, attendance_cancelled_at = NULL,
+                    attendance_cancelled_by_user_id = NULL, attendance_cancellation_reason = NULL";
         if ($tokenUsed) {
             $sql .= ", token_used_at = NOW()";
         }
@@ -538,15 +566,18 @@ class AttendanceController
         $existing = $stmt->fetch();
 
         if ($existing) {
-            if ($existing['status'] === 'attended' && (int) ($existing['gelombang_id'] ?? 0) !== (int) ($gelombangId ?? 0)) {
-                return $existing;
+            if ((int) ($existing['gelombang_id'] ?? 0) !== 0
+                && (int) $existing['gelombang_id'] !== (int) ($gelombangId ?? 0)) {
+                throw new RuntimeException('Gelombang registrasi sudah ditetapkan. Hubungi panitia jika perlu dipindahkan.');
             }
+            $this->ensureGelombangCapacity($gelombangId, (int) $existing['id']);
             $stmt = $pdo->prepare("UPDATE participant_registrations SET gelombang_id = ?, biodata_submitted_at = NOW() WHERE id = ?");
             $stmt->execute([$gelombangId, $existing['id']]);
             $existing['gelombang_id'] = $gelombangId;
             return $existing;
         }
 
+        $this->ensureGelombangCapacity($gelombangId);
         $token = $this->generateUniqueToken($kegiatanId);
         $stmt = $pdo->prepare("
             INSERT INTO participant_registrations (kegiatan_id, participant_id, gelombang_id, token_code, biodata_submitted_at, token_generated_at)
@@ -575,6 +606,35 @@ class AttendanceController
         } while ($stmt->fetch());
 
         return $token;
+    }
+
+    private function ensureGelombangCapacity(?int $gelombangId, ?int $excludeRegistrationId = null): void
+    {
+        global $pdo;
+
+        if (!$gelombangId) {
+            return;
+        }
+
+        $stmt = $pdo->prepare("SELECT kuota FROM kegiatan_gelombang WHERE id = ? LIMIT 1 FOR UPDATE");
+        $stmt->execute([$gelombangId]);
+        $quota = $stmt->fetchColumn();
+        if ($quota === false || $quota === null) {
+            return;
+        }
+
+        $sql = "SELECT COUNT(*) FROM participant_registrations
+                WHERE gelombang_id = ? AND status IN ('registered', 'attended')";
+        $params = [$gelombangId];
+        if ($excludeRegistrationId !== null) {
+            $sql .= " AND id != ?";
+            $params[] = $excludeRegistrationId;
+        }
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        if ((int) $stmt->fetchColumn() >= (int) $quota) {
+            throw new RuntimeException('Kuota gelombang yang dipilih sudah penuh. Hubungi panitia.');
+        }
     }
 
     private function saveSignature($signatureData)
@@ -723,7 +783,8 @@ class AttendanceController
         global $pdo;
 
         $stmt = $pdo->prepare("
-            SELECT id, nama
+            SELECT id, nama, tanggal, waktu_mulai, waktu_selesai,
+                   presensi_mulai, presensi_selesai, kuota
             FROM kegiatan_gelombang
             WHERE kegiatan_id = ? AND is_active = 1
             ORDER BY sort_order, id
@@ -753,6 +814,55 @@ class AttendanceController
         $stmt->execute([$id, $kegiatan['id']]);
 
         return $stmt->fetchColumn() ? (int) $id : null;
+    }
+
+    private function getGelombangById(int $kegiatanId, ?int $gelombangId): ?array
+    {
+        global $pdo;
+
+        if (!$gelombangId) {
+            return null;
+        }
+        $stmt = $pdo->prepare("
+            SELECT * FROM kegiatan_gelombang
+            WHERE id = ? AND kegiatan_id = ? AND is_active = 1
+            LIMIT 1
+        ");
+        $stmt->execute([$gelombangId, $kegiatanId]);
+        return $stmt->fetch() ?: null;
+    }
+
+    private function canParticipantConfirmNow(array $kegiatan, ?int $gelombangId): bool
+    {
+        return $this->participantScheduleResult($kegiatan, $gelombangId)['ok'];
+    }
+
+    private function participantScheduleResult(array $kegiatan, ?int $gelombangId): array
+    {
+        if ((int) ($kegiatan['gelombang_enabled'] ?? 0) === 1) {
+            $wave = $this->getGelombangById((int) $kegiatan['id'], $gelombangId);
+            if (!$wave) {
+                return ['ok' => false, 'message' => 'Gelombang registrasi tidak ditemukan. Hubungi panitia.'];
+            }
+            $timing = WaveScheduleService::timing($wave);
+            if (!$timing['can_confirm']) {
+                return [
+                    'ok' => false,
+                    'message' => 'Presensi gelombang ' . $wave['nama'] . ' hanya dibuka pada ' . $timing['label'] . '.'
+                ];
+            }
+            return ['ok' => true];
+        }
+
+        $timing = $this->getEventTiming($kegiatan);
+        if (!$timing['can_confirm_attendance']) {
+            return [
+                'ok' => false,
+                'message' => 'Presensi belum dibuka. Konfirmasi kehadiran baru dapat dilakukan mulai ' .
+                    $timing['confirmation_open_label'] . ' WIB.'
+            ];
+        }
+        return ['ok' => true];
     }
 
     private function getEventTiming(array $kegiatan)

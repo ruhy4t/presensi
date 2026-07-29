@@ -98,6 +98,11 @@ switch ($route) {
             echo "ID Kegiatan Diperlukan.";
         }
         break;
+    case '/registrations/action':
+        require __DIR__ . '/../src/Controllers/RegistrationController.php';
+        $controller = new RegistrationController();
+        $controller->handleAction();
+        break;
     case '/biodata/print':
         require __DIR__ . '/../src/Controllers/RegistrationController.php';
         $controller = new RegistrationController();

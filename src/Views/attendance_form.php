@@ -18,6 +18,8 @@ $eventMode = $isBeforeEvent ? 'before' : ($isEventDay ? 'day' : 'after');
 $needsBiodata = $needsBiodata ?? true;
 $useLegacyAttendance = !$needsBiodata;
 $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
+$radiusEnabled = $radiusEnabled ?? false;
+$gelombangOptions = $gelombangOptions ?? [];
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -184,15 +186,16 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                                 <p class="text-sm text-gray-600" x-text="prefillData?.jabatan + ' - ' + prefillData?.unit_kerja"></p>
                             </div>
                             <span class="rounded-full px-3 py-1 text-xs font-bold"
-                                :class="prefillStatus === 'attended' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'"
-                                x-text="prefillStatus === 'attended' ? 'Sudah Hadir' : 'Belum Hadir'"></span>
+                                :class="prefillStatus === 'attended' ? 'bg-green-100 text-green-700' : (prefillStatus === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700')"
+                                x-text="prefillStatus === 'attended' ? 'Sudah Hadir' : (prefillStatus === 'cancelled' ? 'Dibatalkan Panitia' : 'Belum Hadir')"></span>
                         </div>
 
                         <dl class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                             <div><dt class="font-semibold text-gray-500">NIP</dt><dd x-text="prefillData?.nip || '-'"></dd></div>
                             <div><dt class="font-semibold text-gray-500">TTL</dt><dd x-text="prefillData?.tempat_lahir + ', ' + prefillData?.tanggal_lahir"></dd></div>
                              <div><dt class="font-semibold text-gray-500">No. HP</dt><dd x-text="prefillData?.hp"></dd></div>
-                             <div x-show="prefillGelombang"><dt class="font-semibold text-gray-500">Gelombang</dt><dd x-text="prefillGelombang"></dd></div>
+                            <div x-show="prefillGelombang"><dt class="font-semibold text-gray-500">Gelombang</dt><dd x-text="prefillGelombang"></dd></div>
+                            <div x-show="prefillJadwal"><dt class="font-semibold text-gray-500">Jadwal Presensi</dt><dd x-text="prefillJadwal"></dd></div>
                             <div class="md:col-span-2"><dt class="font-semibold text-gray-500">Alamat Unit Kerja</dt><dd x-text="prefillData?.alamat_unit_kerja"></dd></div>
                             <div class="md:col-span-2"><dt class="font-semibold text-gray-500">Alamat Rumah</dt><dd x-text="prefillData?.alamat_rumah || '-' "></dd></div>
                         </dl>
@@ -203,7 +206,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                             </div>
                             <button type="submit"
                                 class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-500/30 transition-all disabled:opacity-50"
-                                :disabled="loading || prefillStatus === 'attended' || eventMode === 'before'">
+                                :disabled="loading || prefillStatus === 'attended' || prefillStatus === 'cancelled' || prefillCanConfirm === false || eventMode === 'before'">
                                 Konfirmasi Kehadiran
                             </button>
                         </form>
@@ -222,7 +225,15 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                             <select x-model="form.gelombang_id" class="field bg-white" required>
                                 <option value="">Pilih gelombang</option>
                                 <?php foreach ($gelombangOptions as $gelombang): ?>
-                                    <option value="<?= (int) $gelombang['id'] ?>"><?= htmlspecialchars($gelombang['nama']) ?></option>
+                                    <option value="<?= (int) $gelombang['id'] ?>">
+                                        <?= htmlspecialchars($gelombang['nama']) ?> —
+                                        <?php if (!empty($gelombang['tanggal'])): ?>
+                                            <?= htmlspecialchars(date('d/m/Y', strtotime($gelombang['tanggal']))) ?>
+                                            <?= htmlspecialchars(substr((string) $gelombang['waktu_mulai'], 0, 5)) ?>–<?= htmlspecialchars(substr((string) $gelombang['waktu_selesai'], 0, 5)) ?>
+                                        <?php else: ?>
+                                            Jadwal belum diatur
+                                        <?php endif; ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                             <p class="mt-1 text-xs text-indigo-700">Pastikan pilihan sama dengan gelombang yang tercantum pada undangan.</p>
@@ -300,7 +311,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     </div>
 
                     <?php if ($eventMode !== 'before'): ?>
-                        <label class="flex items-start gap-3 rounded-lg bg-green-50 border border-green-200 p-4">
+                        <label x-show="shouldRequestLocationForBiodata()" class="flex items-start gap-3 rounded-lg bg-green-50 border border-green-200 p-4">
                             <input type="checkbox" x-model="form.confirm_hadir" class="mt-1 h-4 w-4 text-green-600 rounded">
                             <span class="text-sm font-semibold text-green-800">Saya menyatakan hadir pada kegiatan ini.</span>
                         </label>
@@ -312,7 +323,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     <button type="submit"
                         class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         :disabled="loading">
-                        <span x-show="!loading"><?= $eventMode === 'before' ? 'Simpan Biodata dan Ambil Token' : 'Kirim Biodata dan Kehadiran' ?></span>
+                        <span x-show="!loading" x-text="shouldRequestLocationForBiodata() ? 'Kirim Biodata dan Kehadiran' : 'Simpan Biodata dan Ambil Token'"></span>
                         <span x-show="loading">Mengirim...</span>
                     </button>
                 </form>
@@ -523,6 +534,8 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                 prefillData: null,
                 prefillStatus: null,
                 prefillGelombang: null,
+                prefillJadwal: null,
+                prefillCanConfirm: null,
                 signaturePad: null,
                 loading: false,
                 errorMessage: '',
@@ -589,7 +602,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                         return;
                     }
 
-                    if (this.eventMode !== 'before' && !this.form.confirm_hadir) {
+                    if (this.shouldRequestLocationForBiodata() && !this.form.confirm_hadir) {
                         this.errorMessage = 'Konfirmasi kehadiran wajib dicentang.';
                         return;
                     }
@@ -601,7 +614,7 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
 
                     let coords;
                     try {
-                        coords = await requestAttendanceLocation(this.eventMode !== 'before');
+                        coords = await requestAttendanceLocation(this.shouldRequestLocationForBiodata());
                     } catch (error) {
                         this.loading = false;
                         this.errorMessage = error.message;
@@ -644,6 +657,8 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                     this.prefillData = null;
                     this.prefillStatus = null;
                     this.prefillGelombang = null;
+                    this.prefillJadwal = null;
+                    this.prefillCanConfirm = null;
 
                     const formData = new FormData();
                     formData.append('kegiatan_id', this.kegiatanId());
@@ -659,6 +674,8 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                                 this.prefillData = data.participant;
                                 this.prefillStatus = data.registration_status;
                                 this.prefillGelombang = data.gelombang_nama || null;
+                                this.prefillJadwal = data.gelombang_jadwal || null;
+                                this.prefillCanConfirm = data.gelombang_can_confirm;
                                 this.successMessage = data.message;
                             } else {
                                 this.errorMessage = data.message;
@@ -710,6 +727,23 @@ $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
                             this.loading = false;
                             this.errorMessage = 'Terjadi kesalahan jaringan.';
                         });
+                },
+
+                shouldRequestLocationForBiodata() {
+                    if (this.eventMode === 'before') return false;
+                    const schedules = <?= json_encode(array_map(static fn(array $wave): array => [
+                        'id' => (string) $wave['id'],
+                        'tanggal' => $wave['tanggal'],
+                        'mulai' => substr((string) $wave['presensi_mulai'], 0, 5),
+                        'selesai' => substr((string) $wave['presensi_selesai'], 0, 5),
+                    ], $gelombangOptions), JSON_UNESCAPED_SLASHES) ?>;
+                    if (schedules.length === 0) return true;
+                    const selected = schedules.find(item => item.id === String(this.form.gelombang_id));
+                    if (!selected) return false;
+                    const now = new Date();
+                    const opensAt = new Date(selected.tanggal + 'T' + selected.mulai + ':00+07:00');
+                    const closesAt = new Date(selected.tanggal + 'T' + selected.selesai + ':00+07:00');
+                    return now >= opensAt && now <= closesAt;
                 },
 
                 resetForm() {

@@ -4,6 +4,7 @@ require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../Services/KegiatanStatusService.php';
 require_once __DIR__ . '/../Services/KegiatanUrlService.php';
 require_once __DIR__ . '/../Services/AttendanceLocationService.php';
+require_once __DIR__ . '/../Services/WaveScheduleService.php';
 
 class KegiatanController
 {
@@ -25,8 +26,7 @@ class KegiatanController
             if ($user['role'] === 'admin') {
                 $stmt = $pdo->prepare("
                     SELECT k.*, u.fullname as creator_name,
-                           (SELECT GROUP_CONCAT(kg.nama ORDER BY kg.sort_order SEPARATOR '\n') FROM kegiatan_gelombang kg WHERE kg.kegiatan_id = k.id AND kg.is_active = 1) as gelombang_names,
-                           (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id) as attendance_count,
+                           (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id AND a.record_status = 'active') as attendance_count,
                            (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id) as registration_count,
                            (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id AND pr.status = 'attended') as confirmed_count,
                            (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id AND pr.status = 'registered') as unconfirmed_count
@@ -39,8 +39,7 @@ class KegiatanController
             } else {
                 $stmt = $pdo->prepare("
                     SELECT k.*,
-                           (SELECT GROUP_CONCAT(kg.nama ORDER BY kg.sort_order SEPARATOR '\n') FROM kegiatan_gelombang kg WHERE kg.kegiatan_id = k.id AND kg.is_active = 1) as gelombang_names,
-                           (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id) as attendance_count,
+                           (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id AND a.record_status = 'active') as attendance_count,
                            (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id) as registration_count,
                            (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id AND pr.status = 'attended') as confirmed_count,
                            (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id AND pr.status = 'registered') as unconfirmed_count
@@ -50,7 +49,7 @@ class KegiatanController
                 ");
                 $stmt->execute([$user['id']]);
             }
-            return $stmt->fetchAll();
+            return $this->attachGelombangData($stmt->fetchAll());
         } catch (PDOException $e) {
             return [];
         }
@@ -82,7 +81,7 @@ class KegiatanController
         $longitude = trim($_POST['longitude'] ?? '');
         $radius_meters = trim($_POST['radius_meters'] ?? '');
         $gelombang_enabled = !empty($_POST['gelombang_enabled']);
-        $gelombangNames = $this->parseGelombangNames($_POST['gelombang_names'] ?? '');
+        $gelombangRows = $this->parseGelombangRows($_POST);
         $catatan = trim($_POST['catatan'] ?? '');
         $pejabat_penanggung_jawab = trim($_POST['pejabat_penanggung_jawab'] ?? '');
         $jabatan_penanggung_jawab = trim($_POST['jabatan_penanggung_jawab'] ?? '');
@@ -96,7 +95,7 @@ class KegiatanController
             exit;
         }
 
-        if ($schedule['error']) {
+        if ($schedule['error'] && !$gelombang_enabled) {
             $_SESSION['flash_error'] = $schedule['error'];
             header('Location: /dashboard');
             exit;
@@ -133,10 +132,17 @@ class KegiatanController
             header('Location: /dashboard');
             exit;
         }
-        if ($gelombang_enabled && count($gelombangNames) < 1) {
-            $_SESSION['flash_error'] = "Isi minimal satu nama gelombang.";
-            header('Location: /dashboard');
-            exit;
+        if ($gelombang_enabled) {
+            $waveError = WaveScheduleService::validate($gelombangRows);
+            if ($waveError !== null) {
+                $_SESSION['flash_error'] = $waveError;
+                header('Location: /dashboard');
+                exit;
+            }
+            $waveRange = WaveScheduleService::eventRange($gelombangRows);
+            $tanggal_pelaksanaan = $waveRange['start'];
+            $tanggal_selesai = $waveRange['end'];
+            $waktu_pelaksanaan = 'Sesuai jadwal gelombang';
         }
 
         try {
@@ -158,16 +164,16 @@ class KegiatanController
                 $gelombang_enabled ? 1 : 0, $catatan ?: null, $pejabat_penanggung_jawab,
                 $jabatan_penanggung_jawab, $nip_penanggung_jawab, $status, $attendanceToken
             ]);
-            $this->syncGelombang((int) $pdo->lastInsertId(), $gelombang_enabled ? $gelombangNames : []);
+            $this->syncGelombang((int) $pdo->lastInsertId(), $gelombang_enabled ? $gelombangRows : []);
             $pdo->commit();
 
             $_SESSION['flash_success'] = "Kegiatan berhasil ditambahkan.";
             $this->logActivity("ADD_KEGIATAN", "Added: $nama");
-        } catch (PDOException $e) {
+        } catch (PDOException | RuntimeException $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
-            $_SESSION['flash_error'] = "Gagal menambah kegiatan.";
+            $_SESSION['flash_error'] = $e instanceof RuntimeException ? $e->getMessage() : "Gagal menambah kegiatan.";
         }
 
         header('Location: /dashboard');
@@ -200,7 +206,7 @@ class KegiatanController
         $longitude = trim($_POST['longitude'] ?? '');
         $radius_meters = trim($_POST['radius_meters'] ?? '');
         $gelombang_enabled = !empty($_POST['gelombang_enabled']);
-        $gelombangNames = $this->parseGelombangNames($_POST['gelombang_names'] ?? '');
+        $gelombangRows = $this->parseGelombangRows($_POST);
         $catatan = trim($_POST['catatan'] ?? '');
         $pejabat_penanggung_jawab = trim($_POST['pejabat_penanggung_jawab'] ?? '');
         $jabatan_penanggung_jawab = trim($_POST['jabatan_penanggung_jawab'] ?? '');
@@ -211,7 +217,7 @@ class KegiatanController
             $jenis_kegiatan = 'Daring';
         }
 
-        if ($schedule['error']) {
+        if ($schedule['error'] && !$gelombang_enabled) {
             $_SESSION['flash_error'] = $schedule['error'];
             header('Location: /dashboard');
             exit;
@@ -243,10 +249,17 @@ class KegiatanController
             header('Location: /dashboard');
             exit;
         }
-        if ($gelombang_enabled && count($gelombangNames) < 1) {
-            $_SESSION['flash_error'] = "Isi minimal satu nama gelombang.";
-            header('Location: /dashboard');
-            exit;
+        if ($gelombang_enabled) {
+            $waveError = WaveScheduleService::validate($gelombangRows);
+            if ($waveError !== null) {
+                $_SESSION['flash_error'] = $waveError;
+                header('Location: /dashboard');
+                exit;
+            }
+            $waveRange = WaveScheduleService::eventRange($gelombangRows);
+            $tanggal_pelaksanaan = $waveRange['start'];
+            $tanggal_selesai = $waveRange['end'];
+            $waktu_pelaksanaan = 'Sesuai jadwal gelombang';
         }
         
         $user_id = $_SESSION['user_id'];
@@ -287,16 +300,16 @@ class KegiatanController
             $stmt = $pdo->prepare("UPDATE kegiatan SET nama_kegiatan = ?, jenis_kegiatan = ?, nomor_surat_undangan = ?, perlu_biodata = ?, tanggal_pelaksanaan = ?, tanggal_selesai = ?, waktu_pelaksanaan = ?, tempat_pelaksanaan = ?, radius_enabled = ?, latitude = ?, longitude = ?, radius_meters = ?, gelombang_enabled = ?, catatan = ?, pejabat_penanggung_jawab = ?, jabatan_penanggung_jawab = ?, nip_penanggung_jawab = ?$statusSql WHERE id = ?");
             $params[] = $id;
             $stmt->execute($params);
-            $this->syncGelombang((int) $id, $gelombang_enabled ? $gelombangNames : []);
+            $this->syncGelombang((int) $id, $gelombang_enabled ? $gelombangRows : []);
             $pdo->commit();
 
             $_SESSION['flash_success'] = "Kegiatan berhasil diperbarui.";
             $this->logActivity("EDIT_KEGIATAN", "Edited ID: $id");
-        } catch (PDOException $e) {
+        } catch (PDOException | RuntimeException $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
-            $_SESSION['flash_error'] = "Gagal memperbarui kegiatan.";
+            $_SESSION['flash_error'] = $e instanceof RuntimeException ? $e->getMessage() : "Gagal memperbarui kegiatan.";
         }
 
         header('Location: /dashboard');
@@ -377,40 +390,130 @@ class KegiatanController
         }
     }
 
-    private function parseGelombangNames(string $input): array
+    private function parseGelombangRows(array $input): array
     {
-        $names = [];
-        foreach (preg_split('/\R/u', $input) ?: [] as $line) {
-            $name = trim(preg_replace('/\s+/u', ' ', $line) ?? '');
+        $rows = [];
+        $names = $input['wave_name'] ?? [];
+        foreach ((array) $names as $index => $rawName) {
+            $name = trim(preg_replace('/\s+/u', ' ', (string) $rawName) ?? '');
             if ($name === '') {
                 continue;
             }
             $name = function_exists('mb_substr') ? mb_substr($name, 0, 100) : substr($name, 0, 100);
-            $key = function_exists('mb_strtolower') ? mb_strtolower($name) : strtolower($name);
-            $names[$key] = $name;
-            if (count($names) >= 50) {
+            $quotaRaw = trim((string) (($input['wave_quota'][$index] ?? '')));
+            $rows[] = [
+                'id' => filter_var($input['wave_id'][$index] ?? null, FILTER_VALIDATE_INT) ?: null,
+                'nama' => $name,
+                'tanggal' => trim((string) ($input['wave_date'][$index] ?? '')),
+                'waktu_mulai' => WaveScheduleService::normalizeTime($input['wave_start'][$index] ?? null),
+                'waktu_selesai' => WaveScheduleService::normalizeTime($input['wave_end'][$index] ?? null),
+                'presensi_mulai' => WaveScheduleService::normalizeTime($input['wave_checkin_start'][$index] ?? null),
+                'presensi_selesai' => WaveScheduleService::normalizeTime($input['wave_checkin_end'][$index] ?? null),
+                'kuota' => $quotaRaw === '' ? null : (int) $quotaRaw,
+            ];
+            if (count($rows) >= 50) {
                 break;
             }
         }
 
-        return array_values($names);
+        return $rows;
     }
 
-    private function syncGelombang(int $kegiatanId, array $names): void
+    private function syncGelombang(int $kegiatanId, array $waves): void
     {
         global $pdo;
 
         $pdo->prepare("UPDATE kegiatan_gelombang SET is_active = 0 WHERE kegiatan_id = ?")
             ->execute([$kegiatanId]);
 
-        $stmt = $pdo->prepare("
-            INSERT INTO kegiatan_gelombang (kegiatan_id, nama, sort_order, is_active)
-            VALUES (?, ?, ?, 1)
-            ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order), is_active = 1
+        $insertStmt = $pdo->prepare("
+            INSERT INTO kegiatan_gelombang
+                (kegiatan_id, nama, tanggal, waktu_mulai, waktu_selesai,
+                 presensi_mulai, presensi_selesai, kuota, sort_order, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            ON DUPLICATE KEY UPDATE
+                tanggal = VALUES(tanggal), waktu_mulai = VALUES(waktu_mulai),
+                waktu_selesai = VALUES(waktu_selesai), presensi_mulai = VALUES(presensi_mulai),
+                presensi_selesai = VALUES(presensi_selesai), kuota = VALUES(kuota),
+                sort_order = VALUES(sort_order), is_active = 1
         ");
-        foreach ($names as $index => $name) {
-            $stmt->execute([$kegiatanId, $name, $index + 1]);
+        $updateStmt = $pdo->prepare("
+            UPDATE kegiatan_gelombang
+            SET nama = ?, tanggal = ?, waktu_mulai = ?, waktu_selesai = ?,
+                presensi_mulai = ?, presensi_selesai = ?, kuota = ?,
+                sort_order = ?, is_active = 1
+            WHERE id = ? AND kegiatan_id = ?
+        ");
+        foreach ($waves as $index => $wave) {
+            $updated = false;
+            if (!empty($wave['id'])) {
+                $updateStmt->execute([
+                    $wave['nama'], $wave['tanggal'], $wave['waktu_mulai'], $wave['waktu_selesai'],
+                    $wave['presensi_mulai'], $wave['presensi_selesai'], $wave['kuota'],
+                    $index + 1, $wave['id'], $kegiatanId
+                ]);
+                $updated = $updateStmt->rowCount() > 0;
+            }
+            if (!$updated) {
+                $insertStmt->execute([
+                    $kegiatanId, $wave['nama'], $wave['tanggal'], $wave['waktu_mulai'],
+                    $wave['waktu_selesai'], $wave['presensi_mulai'], $wave['presensi_selesai'],
+                    $wave['kuota'], $index + 1
+                ]);
+            }
+
+            if ($wave['kuota'] !== null) {
+                $capacityStmt = $pdo->prepare("
+                    SELECT COUNT(*)
+                    FROM participant_registrations pr
+                    INNER JOIN kegiatan_gelombang kg ON kg.id = pr.gelombang_id
+                    WHERE kg.kegiatan_id = ? AND kg.nama = ?
+                      AND pr.status IN ('registered', 'attended')
+                ");
+                $capacityStmt->execute([$kegiatanId, $wave['nama']]);
+                if ((int) $capacityStmt->fetchColumn() > (int) $wave['kuota']) {
+                    throw new RuntimeException(
+                        'Kuota ' . $wave['nama'] . ' tidak boleh lebih kecil dari jumlah peserta yang sudah terdaftar.'
+                    );
+                }
+            }
         }
+    }
+
+    private function attachGelombangData(array $kegiatanList): array
+    {
+        global $pdo;
+
+        if ($kegiatanList === []) {
+            return [];
+        }
+
+        $ids = array_map(static fn(array $row): int => (int) $row['id'], $kegiatanList);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $pdo->prepare("
+            SELECT id, kegiatan_id, nama, tanggal, waktu_mulai, waktu_selesai,
+                   presensi_mulai, presensi_selesai, kuota
+            FROM kegiatan_gelombang
+            WHERE kegiatan_id IN ({$placeholders}) AND is_active = 1
+            ORDER BY kegiatan_id, sort_order, id
+        ");
+        $stmt->execute($ids);
+        $byKegiatan = [];
+        foreach ($stmt->fetchAll() as $wave) {
+            foreach (['waktu_mulai', 'waktu_selesai', 'presensi_mulai', 'presensi_selesai'] as $field) {
+                $wave[$field] = $wave[$field] !== null ? substr((string) $wave[$field], 0, 5) : '';
+            }
+            $byKegiatan[(int) $wave['kegiatan_id']][] = $wave;
+        }
+
+        foreach ($kegiatanList as &$kegiatan) {
+            $waves = $byKegiatan[(int) $kegiatan['id']] ?? [];
+            $kegiatan['gelombang_data'] = $waves;
+            $kegiatan['gelombang_names'] = implode("\n", array_column($waves, 'nama'));
+        }
+        unset($kegiatan);
+
+        return $kegiatanList;
     }
 
     private function ensureCatatanColumn(PDO $pdo)

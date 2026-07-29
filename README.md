@@ -1,6 +1,6 @@
 # Presensi
 
-Versi aplikasi: **1.1.0** (29 Juli 2026)
+Versi aplikasi: **1.2.0** (29 Juli 2026)
 
 Aplikasi presensi berbasis PHP untuk mengelola kegiatan, registrasi peserta,
 kehadiran, laporan, dan cetak biodata/daftar hadir.
@@ -59,6 +59,18 @@ Untuk pembaruan manual melalui phpMyAdmin, impor
 `migrations/2026_07_29_radius_gelombang.sql` sebelum mengunggah kode versi ini.
 Kegiatan lama tetap memiliki radius dan gelombang dalam keadaan nonaktif. Fitur
 tersebut dapat diaktifkan melalui menu **Edit Kegiatan**.
+
+### Pembaruan versi 1.2.0
+
+- Setiap gelombang memiliki tanggal, jam kegiatan, jam buka/tutup presensi, dan kuota opsional.
+- Rentang tanggal kegiatan otomatis mengikuti tanggal gelombang pertama dan terakhir.
+- Konfirmasi peserta divalidasi berdasarkan jadwal gelombang serta radius kegiatan.
+- Pengelola dapat memindahkan gelombang, mengonfirmasi manual tanpa batas waktu/radius,
+  dan membatalkan kehadiran dengan alasan wajib.
+- Koreksi admin tidak menghapus bukti lama dan dicatat pada `attendance_adjustments`.
+
+Untuk memperbarui dari versi 1.1.0, impor
+`migrations/2026_07_29_wave_schedule_admin.sql` setelah migration radius.
 
 ## Pemeriksaan Sebelum Deployment
 

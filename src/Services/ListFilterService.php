@@ -14,7 +14,7 @@ class ListFilterService
     public static function registrationStatus(mixed $value): string
     {
         $value = (string) $value;
-        return in_array($value, ['registered', 'attended'], true) ? $value : '';
+        return in_array($value, ['registered', 'attended', 'cancelled'], true) ? $value : '';
     }
 
     public static function kegiatanStatus(mixed $value): string

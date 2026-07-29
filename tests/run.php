@@ -39,6 +39,7 @@ require_once dirname(__DIR__) . '/src/Services/KegiatanStatusService.php';
 require_once dirname(__DIR__) . '/src/Services/KegiatanUrlService.php';
 require_once dirname(__DIR__) . '/src/Services/ListFilterService.php';
 require_once dirname(__DIR__) . '/src/Services/AttendanceLocationService.php';
+require_once dirname(__DIR__) . '/src/Services/WaveScheduleService.php';
 require_once dirname(__DIR__) . '/scripts/sql.php';
 
 test('manual active status remains marked as manual', function (): void {
@@ -126,6 +127,7 @@ test('migration parser preserves semicolons inside SQL strings', function (): vo
 test('list filters accept only known statuses', function (): void {
     assertSameValue('attended', ListFilterService::registrationStatus('attended'));
     assertSameValue('', ListFilterService::registrationStatus('unknown'));
+    assertSameValue('cancelled', ListFilterService::registrationStatus('cancelled'));
     assertSameValue('Diarsipkan', ListFilterService::kegiatanStatus('Diarsipkan'));
     assertSameValue('', ListFilterService::kegiatanStatus('Dihapus'));
 });
@@ -213,9 +215,60 @@ test('application version is visible in authenticated and public interfaces', fu
     $appConfig = file_get_contents(dirname(__DIR__) . '/config/app.php');
     $sidebar = file_get_contents(dirname(__DIR__) . '/src/Views/partials/sidebar.php');
     $attendanceView = file_get_contents(dirname(__DIR__) . '/src/Views/attendance_form.php');
-    assertContainsText("APP_VERSION = '1.1.0'", $appConfig);
+    assertContainsText("APP_VERSION = '1.2.0'", $appConfig);
     assertContainsText('APP_VERSION', $sidebar);
     assertContainsText('APP_VERSION', $attendanceView);
+});
+
+test('wave schedules validate dates, times, quota, and duplicate names', function (): void {
+    $valid = [[
+        'nama' => 'Gelombang 1',
+        'tanggal' => '2026-08-05',
+        'waktu_mulai' => '08:00',
+        'waktu_selesai' => '12:00',
+        'presensi_mulai' => '07:30',
+        'presensi_selesai' => '12:00',
+        'kuota' => 50,
+    ]];
+    assertSameValue(null, WaveScheduleService::validate($valid));
+
+    $duplicate = array_merge($valid, [array_merge($valid[0], ['tanggal' => '2026-08-06'])]);
+    assertContainsText('tidak boleh sama', WaveScheduleService::validate($duplicate));
+
+    $invalidTime = $valid;
+    $invalidTime[0]['presensi_selesai'] = '07:00';
+    assertContainsText('harus setelah', WaveScheduleService::validate($invalidTime));
+});
+
+test('event range and participant confirmation follow wave schedule', function (): void {
+    $waves = [
+        ['tanggal' => '2026-08-06'],
+        ['tanggal' => '2026-08-05'],
+    ];
+    assertSameValue(['start' => '2026-08-05', 'end' => '2026-08-06'], WaveScheduleService::eventRange($waves));
+
+    $wave = [
+        'tanggal' => '2026-08-05',
+        'presensi_mulai' => '07:30',
+        'presensi_selesai' => '12:00',
+    ];
+    $inside = WaveScheduleService::timing($wave, new DateTimeImmutable('2026-08-05 08:00:00', new DateTimeZone('Asia/Jakarta')));
+    $outside = WaveScheduleService::timing($wave, new DateTimeImmutable('2026-08-05 13:00:00', new DateTimeZone('Asia/Jakarta')));
+    assertSameValue(true, $inside['can_confirm']);
+    assertSameValue(false, $outside['can_confirm']);
+});
+
+test('admin attendance corrections require audit and preserve cancelled records', function (): void {
+    $controller = file_get_contents(dirname(__DIR__) . '/src/Controllers/RegistrationController.php');
+    $migration = file_get_contents(dirname(__DIR__) . '/migrations/2026_07_29_wave_schedule_admin.sql');
+    if ($controller === false || $migration === false) {
+        throw new RuntimeException('Admin attendance files cannot be read.');
+    }
+    foreach (['move_wave', 'admin_confirm', 'cancel_attendance', 'attendance_adjustments'] as $needle) {
+        assertContainsText($needle, $controller . $migration);
+    }
+    assertContainsText("record_status = 'cancelled'", $controller);
+    assertContainsText('confirmation_source', $migration);
 });
 
 echo "\nResult: {$passed} passed, {$failed} failed.\n";
