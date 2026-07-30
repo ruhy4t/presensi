@@ -150,6 +150,8 @@ test('biodata form requires home address', function (): void {
     }
     assertContainsText('x-model="form.alamat_rumah"', $view);
     assertContainsText("'alamat_rumah' => 'Alamat rumah'", $controller);
+    assertContainsText('this.signaturePad.isEmpty()', $view);
+    assertContainsText('Tanda tangan wajib diisi.', $controller);
 });
 
 test('shared sidebar is used by all authenticated menus', function (): void {
@@ -240,6 +242,9 @@ test('printed attendance moves wave information above the participant table', fu
     assertContainsText('SELECT nama', $reportController);
     assertContainsText('FROM kegiatan_gelombang', $reportController);
     assertContainsText('class="col-ttd">Tanda Tangan', $printView);
+    assertContainsText('is_file($signaturePath)', $printView);
+    assertContainsText('signature-name-fallback', $printView);
+    assertContainsText('firstNameForSignature', $printView);
 });
 
 test('application version is visible in authenticated and public interfaces', function (): void {

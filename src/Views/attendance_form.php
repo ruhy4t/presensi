@@ -94,7 +94,7 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
                 </div>
 
                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Tanda Tangan</label>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Tanda Tangan <span class="text-red-600">*</span></label>
                     <div class="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 touch-none">
                         <canvas id="signature-pad" class="w-full h-44"></canvas>
                     </div>
@@ -300,7 +300,7 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
                     </div>
 
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Tanda Tangan</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Tanda Tangan <span class="text-red-600">*</span></label>
                         <div class="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 touch-none">
                             <canvas id="signature-pad" class="w-full h-44"></canvas>
                         </div>

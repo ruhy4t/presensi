@@ -686,8 +686,13 @@ class AttendanceController
         $hp = trim($_POST['hp'] ?? '');
         $signatureData = $_POST['signature'] ?? '';
 
-        if (empty($kegiatanId) || empty($nama) || empty($signatureData)) {
+        if (empty($kegiatanId) || empty($nama)) {
             $this->jsonError('Data tidak lengkap.');
+            return;
+        }
+
+        if (trim((string) $signatureData) === '') {
+            $this->jsonError('Tanda tangan wajib diisi.');
             return;
         }
 

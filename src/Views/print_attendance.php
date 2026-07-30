@@ -17,6 +17,11 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
     }
     return htmlspecialchars($tgl);
 }
+
+function firstNameForSignature($name) {
+    $parts = preg_split('/\s+/', trim((string) $name));
+    return $parts[0] ?? '-';
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -179,6 +184,17 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
             object-fit: contain;
         }
 
+        .signature-name-fallback {
+            display: inline-block;
+            max-width: 100%;
+            overflow: hidden;
+            font-family: "Brush Script MT", "Segoe Script", "Lucida Handwriting", cursive;
+            font-size: 17pt;
+            font-style: italic;
+            line-height: 1;
+            white-space: nowrap;
+        }
+
         @media print {
             .no-print {
                 display: none;
@@ -280,7 +296,15 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
                         <?= htmlspecialchars($row['jabatan']) ?>
                     </td>
                     <td class="col-ttd">
-                        <img src="/uploads/<?= htmlspecialchars($row['signature_file']) ?>" class="signature-img" alt="TTD">
+                        <?php
+                        $signatureFile = basename((string) ($row['signature_file'] ?? ''));
+                        $signaturePath = __DIR__ . '/../../public/uploads/' . $signatureFile;
+                        ?>
+                        <?php if ($signatureFile !== '' && is_file($signaturePath)): ?>
+                            <img src="/uploads/<?= htmlspecialchars($signatureFile) ?>" class="signature-img" alt="TTD">
+                        <?php else: ?>
+                            <span class="signature-name-fallback"><?= htmlspecialchars(firstNameForSignature($row['nama'] ?? '')) ?></span>
+                        <?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>
