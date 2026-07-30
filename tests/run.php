@@ -223,16 +223,22 @@ test('legacy participant tokens remain usable when an old activity has no invita
     assertContainsText('$requiresInvitationNumber', $attendanceView);
 });
 
-test('printed attendance keeps signature column clear of confirmation source labels', function (): void {
+test('printed attendance moves wave information above the participant table', function (): void {
     $printView = file_get_contents(dirname(__DIR__) . '/src/Views/print_attendance.php');
-    if ($printView === false) {
-        throw new RuntimeException('Printed attendance view cannot be read.');
+    $reportController = file_get_contents(dirname(__DIR__) . '/src/Controllers/ReportController.php');
+    if ($printView === false || $reportController === false) {
+        throw new RuntimeException('Printed attendance sources cannot be read.');
     }
 
-    if (str_contains($printView, '<th>Sumber</th>') || str_contains($printView, "=== 'admin' ? 'Admin' : 'Peserta'")) {
-        throw new RuntimeException('Confirmation source is still rendered in the printed attendance table.');
+    if (str_contains($printView, '<th>Sumber</th>')
+        || str_contains($printView, "=== 'admin' ? 'Admin' : 'Peserta'")
+        || str_contains($printView, 'class="col-gelombang"')) {
+        throw new RuntimeException('Source or wave information is still rendered as a participant table column.');
     }
-    assertContainsText('class="col-gelombang">Gelombang', $printView);
+    assertContainsText("\$kegiatan['gelombang_enabled']", $printView);
+    assertContainsText("implode(', ', \$gelombangNames)", $printView);
+    assertContainsText('SELECT nama', $reportController);
+    assertContainsText('FROM kegiatan_gelombang', $reportController);
     assertContainsText('class="col-ttd">Tanda Tangan', $printView);
 });
 

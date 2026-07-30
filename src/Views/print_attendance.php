@@ -153,23 +153,19 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
         }
 
         .col-nama {
-            width: 25%;
+            width: 28%;
         }
 
         .col-instansi {
-            width: 24%;
+            width: 27%;
         }
 
         .col-jabatan {
-            width: 20%;
-        }
-
-        .attendance-table .col-gelombang {
-            width: 15%;
+            width: 25%;
         }
 
         .attendance-table .col-ttd {
-            width: 12%;
+            width: 16%;
             text-align: center;
             padding-left: 2px;
             padding-right: 2px;
@@ -248,6 +244,13 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
             <td class="col-titikdua">:</td>
             <td><?= htmlspecialchars($kegiatan['waktu_pelaksanaan'] ?? '') ?></td>
         </tr>
+        <?php if ((int) ($kegiatan['gelombang_enabled'] ?? 0) === 1): ?>
+            <tr>
+                <td class="col-label">Gelombang</td>
+                <td class="col-titikdua">:</td>
+                <td><?= htmlspecialchars($gelombangNames !== [] ? implode(', ', $gelombangNames) : '-') ?></td>
+            </tr>
+        <?php endif; ?>
     </table>
 
     <table class="attendance-table">
@@ -257,7 +260,6 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
                 <th class="col-nama">Nama Lengkap</th>
                 <th class="col-instansi">Instansi</th>
                 <th class="col-jabatan">Jabatan</th>
-                <th class="col-gelombang">Gelombang</th>
                 <th class="col-ttd">Tanda Tangan</th>
             </tr>
         </thead>
@@ -277,7 +279,6 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
                     <td class="col-jabatan">
                         <?= htmlspecialchars($row['jabatan']) ?>
                     </td>
-                    <td class="col-gelombang"><?= htmlspecialchars($row['gelombang_nama'] ?? '-') ?></td>
                     <td class="col-ttd">
                         <img src="/uploads/<?= htmlspecialchars($row['signature_file']) ?>" class="signature-img" alt="TTD">
                     </td>

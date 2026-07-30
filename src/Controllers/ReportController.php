@@ -110,6 +110,18 @@ class ReportController
         $stmt2->execute([$kegiatanId]);
         $attendanceData = $stmt2->fetchAll();
 
+        $gelombangNames = [];
+        if ((int) ($kegiatan['gelombang_enabled'] ?? 0) === 1) {
+            $gelombangStmt = $pdo->prepare("
+                SELECT nama
+                FROM kegiatan_gelombang
+                WHERE kegiatan_id = ? AND is_active = 1
+                ORDER BY sort_order, id
+            ");
+            $gelombangStmt->execute([$kegiatanId]);
+            $gelombangNames = $gelombangStmt->fetchAll(PDO::FETCH_COLUMN);
+        }
+
         // 3. Render Print View
         require __DIR__ . '/../Views/print_attendance.php';
     }
