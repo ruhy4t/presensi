@@ -223,6 +223,19 @@ test('legacy participant tokens remain usable when an old activity has no invita
     assertContainsText('$requiresInvitationNumber', $attendanceView);
 });
 
+test('printed attendance keeps signature column clear of confirmation source labels', function (): void {
+    $printView = file_get_contents(dirname(__DIR__) . '/src/Views/print_attendance.php');
+    if ($printView === false) {
+        throw new RuntimeException('Printed attendance view cannot be read.');
+    }
+
+    if (str_contains($printView, '<th>Sumber</th>') || str_contains($printView, "=== 'admin' ? 'Admin' : 'Peserta'")) {
+        throw new RuntimeException('Confirmation source is still rendered in the printed attendance table.');
+    }
+    assertContainsText('class="col-gelombang">Gelombang', $printView);
+    assertContainsText('class="col-ttd">Tanda Tangan', $printView);
+});
+
 test('application version is visible in authenticated and public interfaces', function (): void {
     $appConfig = file_get_contents(dirname(__DIR__) . '/config/app.php');
     $sidebar = file_get_contents(dirname(__DIR__) . '/src/Views/partials/sidebar.php');

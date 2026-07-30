@@ -148,24 +148,28 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
         }
 
         .attendance-table .col-no {
-            width: 5%;
+            width: 4%;
             text-align: center;
         }
 
         .col-nama {
-            width: 28%;
+            width: 25%;
         }
 
         .col-instansi {
-            width: 29%;
+            width: 24%;
         }
 
         .col-jabatan {
-            width: 28%;
+            width: 20%;
+        }
+
+        .attendance-table .col-gelombang {
+            width: 15%;
         }
 
         .attendance-table .col-ttd {
-            width: 10%;
+            width: 12%;
             text-align: center;
             padding-left: 2px;
             padding-right: 2px;
@@ -253,8 +257,7 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
                 <th class="col-nama">Nama Lengkap</th>
                 <th class="col-instansi">Instansi</th>
                 <th class="col-jabatan">Jabatan</th>
-                <th>Gelombang</th>
-                <th>Sumber</th>
+                <th class="col-gelombang">Gelombang</th>
                 <th class="col-ttd">Tanda Tangan</th>
             </tr>
         </thead>
@@ -274,8 +277,7 @@ function formatTanggalIndoPrint($tgl, $tampil_hari = true) {
                     <td class="col-jabatan">
                         <?= htmlspecialchars($row['jabatan']) ?>
                     </td>
-                    <td><?= htmlspecialchars($row['gelombang_nama'] ?? '-') ?></td>
-                    <td><?= ($row['confirmation_source'] ?? 'participant') === 'admin' ? 'Admin' : 'Peserta' ?></td>
+                    <td class="col-gelombang"><?= htmlspecialchars($row['gelombang_nama'] ?? '-') ?></td>
                     <td class="col-ttd">
                         <img src="/uploads/<?= htmlspecialchars($row['signature_file']) ?>" class="signature-img" alt="TTD">
                     </td>
