@@ -211,6 +211,18 @@ test('radius and wave migration remains phpMyAdmin importable and indexed', func
     assertContainsText('idx_attendances_gelombang', $migration);
 });
 
+test('legacy participant tokens remain usable when an old activity has no invitation number', function (): void {
+    $controller = file_get_contents(dirname(__DIR__) . '/src/Controllers/AttendanceController.php');
+    $attendanceView = file_get_contents(dirname(__DIR__) . '/src/Views/attendance_form.php');
+    if ($controller === false || $attendanceView === false) {
+        throw new RuntimeException('Attendance source cannot be read.');
+    }
+
+    assertContainsText("NULLIF(TRIM(k.nomor_surat_undangan), '') IS NULL", $controller);
+    assertContainsText("TRIM(k.nomor_surat_undangan) = '-'", $controller);
+    assertContainsText('$requiresInvitationNumber', $attendanceView);
+});
+
 test('application version is visible in authenticated and public interfaces', function (): void {
     $appConfig = file_get_contents(dirname(__DIR__) . '/config/app.php');
     $sidebar = file_get_contents(dirname(__DIR__) . '/src/Views/partials/sidebar.php');

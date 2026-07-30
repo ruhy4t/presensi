@@ -20,6 +20,8 @@ $useLegacyAttendance = !$needsBiodata;
 $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
 $radiusEnabled = $radiusEnabled ?? false;
 $gelombangOptions = $gelombangOptions ?? [];
+$invitationNumber = trim((string) ($kegiatan['nomor_surat_undangan'] ?? ''));
+$requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-';
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -147,28 +149,30 @@ $gelombangOptions = $gelombangOptions ?? [];
             <?php if ($eventMode !== 'before'): ?>
                 <div x-show="activeTab === 'token'">
                     <div class="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
-                        Peserta yang sudah mengisi biodata cukup memasukkan token dan nomor surat undangan untuk konfirmasi kehadiran. Token muncul setelah biodata berhasil disimpan dan juga dapat dilihat panitia pada menu Peserta & Token.
-                        <?php if (!empty($kegiatan['nomor_surat_undangan'])): ?>
-                            <div class="mt-2 font-semibold">Nomor surat undangan: <?= htmlspecialchars($kegiatan['nomor_surat_undangan']) ?></div>
+                        Peserta yang sudah mengisi biodata cukup memasukkan token<?= $requiresInvitationNumber ? ' dan nomor surat undangan' : '' ?> untuk konfirmasi kehadiran. Token muncul setelah biodata berhasil disimpan dan juga dapat dilihat panitia pada menu Peserta & Token.
+                        <?php if ($requiresInvitationNumber): ?>
+                            <div class="mt-2 font-semibold">Nomor surat undangan: <?= htmlspecialchars($invitationNumber) ?></div>
                         <?php endif; ?>
                     </div>
                     <form @submit.prevent="fetchPrefill" class="space-y-4">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                         <input type="hidden" name="kegiatan_id" value="<?= (int)$kegiatan['id'] ?>">
 
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 <?= $requiresInvitationNumber ? 'md:grid-cols-2' : '' ?> gap-4">
                             <div>
                                 <label class="block text-sm font-bold text-gray-700 mb-1">Token</label>
                                 <input type="text" x-model="tokenForm.token"
                                     class="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-200 transition-all outline-none uppercase"
                                     placeholder="Contoh: A1B2C3D4" required>
                             </div>
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-1">Nomor Surat Undangan</label>
-                                <input type="text" x-model="tokenForm.nomor_surat_undangan"
-                                    class="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-200 transition-all outline-none"
-                                    placeholder="Nomor surat undangan" required>
-                            </div>
+                            <?php if ($requiresInvitationNumber): ?>
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-1">Nomor Surat Undangan</label>
+                                    <input type="text" x-model="tokenForm.nomor_surat_undangan"
+                                        class="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                                        placeholder="Nomor surat undangan" required>
+                                </div>
+                            <?php endif; ?>
                         </div>
 
                         <button type="submit"
@@ -344,8 +348,8 @@ $gelombangOptions = $gelombangOptions ?? [];
                 <p class="text-xs uppercase tracking-wide text-gray-300">Token Kehadiran</p>
                 <p class="text-3xl font-black tracking-[0.25em] mt-2" x-text="tokenResult"></p>
                 <p class="text-xs text-gray-300 mt-3">Simpan token ini, akan digunakan untuk konfirmasi kehadiran pada saat pelaksanaan kegiatan.</p>
-                <?php if (!empty($kegiatan['nomor_surat_undangan'])): ?>
-                    <p class="mt-3 rounded-lg bg-white/10 px-3 py-2 text-xs text-gray-100">Nomor surat: <?= htmlspecialchars($kegiatan['nomor_surat_undangan']) ?></p>
+                <?php if ($requiresInvitationNumber): ?>
+                    <p class="mt-3 rounded-lg bg-white/10 px-3 py-2 text-xs text-gray-100">Nomor surat: <?= htmlspecialchars($invitationNumber) ?></p>
                 <?php endif; ?>
             </div>
             <button type="button" @click="resetForm" class="w-full max-w-sm bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 rounded-xl shadow-lg transition-all">

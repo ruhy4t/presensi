@@ -92,8 +92,8 @@ class AttendanceController
         $token = $this->normalizeToken($_POST['token'] ?? '');
         $nomorSurat = trim($_POST['nomor_surat_undangan'] ?? '');
 
-        if (!$kegiatanId || !$token || !$nomorSurat) {
-            $this->jsonError('Token dan nomor surat undangan wajib diisi.');
+        if (!$kegiatanId || !$token) {
+            $this->jsonError('Token wajib diisi.');
             return;
         }
 
@@ -109,7 +109,13 @@ class AttendanceController
                 INNER JOIN participants p ON p.id = pr.participant_id
                 INNER JOIN kegiatan k ON k.id = pr.kegiatan_id
                 LEFT JOIN kegiatan_gelombang kg ON kg.id = pr.gelombang_id
-                WHERE pr.kegiatan_id = ? AND pr.token_code = ? AND LOWER(k.nomor_surat_undangan) = LOWER(?)
+                WHERE pr.kegiatan_id = ?
+                  AND pr.token_code = ?
+                  AND (
+                      NULLIF(TRIM(k.nomor_surat_undangan), '') IS NULL
+                      OR TRIM(k.nomor_surat_undangan) = '-'
+                      OR LOWER(TRIM(k.nomor_surat_undangan)) = LOWER(TRIM(?))
+                  )
                 LIMIT 1
             ");
             $stmt->execute([$kegiatanId, $token, $nomorSurat]);
@@ -293,8 +299,8 @@ class AttendanceController
         $token = $this->normalizeToken($_POST['token'] ?? '');
         $nomorSurat = trim($_POST['nomor_surat_undangan'] ?? '');
 
-        if (!$kegiatanId || !$token || !$nomorSurat) {
-            $this->jsonError('Token dan nomor surat undangan wajib diisi.');
+        if (!$kegiatanId || !$token) {
+            $this->jsonError('Token wajib diisi.');
             return;
         }
 
@@ -317,7 +323,13 @@ class AttendanceController
                 FROM participant_registrations pr
                 INNER JOIN participants p ON p.id = pr.participant_id
                 INNER JOIN kegiatan k ON k.id = pr.kegiatan_id
-                WHERE pr.kegiatan_id = ? AND pr.token_code = ? AND LOWER(k.nomor_surat_undangan) = LOWER(?)
+                WHERE pr.kegiatan_id = ?
+                  AND pr.token_code = ?
+                  AND (
+                      NULLIF(TRIM(k.nomor_surat_undangan), '') IS NULL
+                      OR TRIM(k.nomor_surat_undangan) = '-'
+                      OR LOWER(TRIM(k.nomor_surat_undangan)) = LOWER(TRIM(?))
+                  )
                 LIMIT 1
             ");
             $stmt->execute([$kegiatanId, $token, $nomorSurat]);
