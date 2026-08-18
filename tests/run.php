@@ -154,8 +154,28 @@ test('biodata form requires home address', function (): void {
     assertContainsText('Tanda tangan wajib diisi.', $controller);
 });
 
+test('returning participants can prefill biodata by NIK', function (): void {
+    $view = file_get_contents(dirname(__DIR__) . '/src/Views/attendance_form.php');
+    $controller = file_get_contents(dirname(__DIR__) . '/src/Controllers/AttendanceController.php');
+    $router = file_get_contents(dirname(__DIR__) . '/public/index.php');
+    assertContainsText('lookupBiodataByNik', $view);
+    assertContainsText('/attendance/biodata-prefill', $view . $router);
+    assertContainsText('prefillBiodataByNik', $controller . $router);
+    assertContainsText('WHERE nik = ?', $controller);
+});
+
+test('authenticated accounts have scoped participant history', function (): void {
+    $controller = file_get_contents(dirname(__DIR__) . '/src/Controllers/ParticipantController.php');
+    $view = file_get_contents(dirname(__DIR__) . '/src/Views/participants.php');
+    $sidebar = file_get_contents(dirname(__DIR__) . '/src/Views/partials/sidebar.php');
+    assertContainsText('k.user_id = :user_id', $controller);
+    assertContainsText('COUNT(DISTINCT pr.participant_id)', $controller);
+    assertContainsText('Riwayat Peserta', $view . $sidebar);
+    assertContainsText("\$activeMenu = 'participants'", $view);
+});
+
 test('shared sidebar is used by all authenticated menus', function (): void {
-    foreach (['dashboard.php', 'users.php', 'reports.php'] as $viewName) {
+    foreach (['dashboard.php', 'users.php', 'reports.php', 'participants.php'] as $viewName) {
         $view = file_get_contents(dirname(__DIR__) . '/src/Views/' . $viewName);
         if ($view === false) {
             throw new RuntimeException("Cannot read {$viewName}");

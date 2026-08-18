@@ -81,6 +81,16 @@ switch ($route) {
         $controller = new AttendanceController();
         $controller->prefill();
         break;
+    case '/attendance/biodata-prefill':
+        require __DIR__ . '/../src/Controllers/AttendanceController.php';
+        $controller = new AttendanceController();
+        $controller->prefillBiodataByNik();
+        break;
+    case '/participants':
+        require __DIR__ . '/../src/Controllers/ParticipantController.php';
+        $controller = new ParticipantController();
+        $controller->index();
+        break;
     case '/users':
         require __DIR__ . '/../src/Views/users.php';
         break;

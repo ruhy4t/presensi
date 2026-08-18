@@ -245,6 +245,19 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
                     <?php endif; ?>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="md:col-span-2 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                            <label class="block text-sm font-bold text-blue-900 mb-1">NIK</label>
+                            <input type="text" x-model="form.nik" @input.debounce.400ms="lookupBiodataByNik"
+                                inputmode="numeric" maxlength="16" class="field bg-white"
+                                placeholder="Masukkan 16 digit NIK" required>
+                            <p class="mt-2 text-xs text-blue-700">Jika NIK pernah digunakan pada kegiatan sebelumnya, biodata akan terisi otomatis dan tetap dapat diperbarui.</p>
+                            <p x-show="biodataLookupLoading" class="mt-2 text-xs font-semibold text-blue-700" style="display: none;">
+                                <i class="bi bi-arrow-repeat mr-1"></i>Mencari biodata...
+                            </p>
+                            <p x-show="biodataLookupMessage" x-text="biodataLookupMessage"
+                                :class="biodataFound ? 'text-green-700' : 'text-gray-600'"
+                                class="mt-2 text-xs font-semibold" style="display: none;"></p>
+                        </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm font-bold text-gray-700 mb-1">Nama Lengkap dengan Gelar</label>
                             <input type="text" x-model="form.nama_lengkap" class="field" placeholder="Nama lengkap" required>
@@ -264,10 +277,6 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-1">NIP</label>
                             <input type="text" x-model="form.nip" class="field" placeholder="Opsional jika tidak ada">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-1">NIK</label>
-                            <input type="text" x-model="form.nik" inputmode="numeric" maxlength="16" class="field" placeholder="16 digit NIK" required>
                         </div>
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-1">Jabatan</label>
@@ -540,6 +549,10 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
                 prefillGelombang: null,
                 prefillJadwal: null,
                 prefillCanConfirm: null,
+                biodataLookupLoading: false,
+                biodataLookupMessage: '',
+                biodataFound: false,
+                biodataLookupSequence: 0,
                 signaturePad: null,
                 loading: false,
                 errorMessage: '',
@@ -598,6 +611,49 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
 
                 kegiatanId() {
                     return document.querySelector('[name="kegiatan_id"]').value;
+                },
+
+                lookupBiodataByNik() {
+                    this.form.nik = String(this.form.nik || '').replace(/\D/g, '').slice(0, 16);
+                    const sequence = ++this.biodataLookupSequence;
+                    this.biodataLookupMessage = '';
+                    this.biodataFound = false;
+
+                    if (this.form.nik.length !== 16) {
+                        this.biodataLookupLoading = false;
+                        return;
+                    }
+
+                    this.biodataLookupLoading = true;
+                    const formData = new FormData();
+                    formData.append('kegiatan_id', this.kegiatanId());
+                    formData.append('csrf_token', this.csrfToken());
+                    formData.append('nik', this.form.nik);
+
+                    fetch('/attendance/biodata-prefill', { method: 'POST', body: formData })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (sequence !== this.biodataLookupSequence) return;
+                            this.biodataLookupLoading = false;
+                            if (data.status !== 'success') {
+                                this.biodataLookupMessage = data.message;
+                                return;
+                            }
+                            this.biodataFound = Boolean(data.found);
+                            this.biodataLookupMessage = data.message;
+                            if (!data.found || !data.participant) return;
+
+                            Object.keys(data.participant).forEach(key => {
+                                if (Object.prototype.hasOwnProperty.call(this.form, key)) {
+                                    this.form[key] = data.participant[key] ?? '';
+                                }
+                            });
+                        })
+                        .catch(() => {
+                            if (sequence !== this.biodataLookupSequence) return;
+                            this.biodataLookupLoading = false;
+                            this.biodataLookupMessage = 'Biodata belum dapat dicari. Silakan isi form secara manual.';
+                        });
                 },
 
                 async submitBiodata() {

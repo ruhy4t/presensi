@@ -165,6 +165,63 @@ class AttendanceController
         }
     }
 
+    public function prefillBiodataByNik()
+    {
+        global $pdo;
+
+        header('Content-Type: application/json');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $this->jsonError('Invalid Request');
+            return;
+        }
+
+        if (!$this->isValidCsrf()) {
+            $this->jsonError('Sesi tidak valid atau kadaluarsa. Silakan muat ulang halaman.');
+            return;
+        }
+
+        $kegiatanId = filter_var($_POST['kegiatan_id'] ?? null, FILTER_VALIDATE_INT);
+        $nik = $this->normalizeNik($_POST['nik'] ?? '');
+        if (!$kegiatanId || !preg_match('/^\d{16}$/', $nik)) {
+            $this->jsonError('NIK wajib berisi 16 digit angka.');
+            return;
+        }
+
+        if (!$this->getKegiatan($kegiatanId)) {
+            $this->jsonError('Kegiatan tidak ditemukan atau sudah ditutup.');
+            return;
+        }
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT nama_lengkap, tempat_lahir, tanggal_lahir, pangkat_gol, nip, nik,
+                       jabatan, unit_kerja, alamat_unit_kerja, telepon_unit_kerja,
+                       alamat_rumah, hp, email
+                FROM participants
+                WHERE nik = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$nik]);
+            $participant = $stmt->fetch();
+
+            if (!$participant) {
+                $this->jsonSuccess('NIK belum pernah terdaftar. Silakan isi biodata baru.', [
+                    'found' => false
+                ]);
+                return;
+            }
+
+            $this->jsonSuccess('Biodata sebelumnya ditemukan dan sudah diisikan.', [
+                'found' => true,
+                'participant' => $participant
+            ]);
+        } catch (PDOException $e) {
+            error_log($e->getMessage());
+            $this->jsonError('Terjadi kesalahan sistem.');
+        }
+    }
+
     public function store()
     {
         header('Content-Type: application/json');

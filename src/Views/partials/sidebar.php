@@ -29,6 +29,10 @@ $sidebarActive = ' bg-blue-600 text-white shadow-lg shadow-blue-500/30';
             <i class="bi bi-file-earmark-pdf-fill mr-3"></i> Laporan
         </a>
 
+        <a href="/participants" class="<?= $sidebarBase . ($activeMenu === 'participants' ? $sidebarActive : $sidebarInactive) ?>">
+            <i class="bi bi-person-vcard-fill mr-3"></i> Riwayat Peserta
+        </a>
+
         <a href="/logout?action=logout"
             class="flex items-center px-4 py-3 text-red-400 hover:bg-red-900/20 hover:text-red-300 rounded-lg transition-colors mt-8">
             <i class="bi bi-box-arrow-left mr-3"></i> Logout
