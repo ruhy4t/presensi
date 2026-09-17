@@ -329,5 +329,63 @@ test('admin attendance corrections require audit and preserve cancelled records'
     assertContainsText('CONVERT(a.nama USING utf8mb4) COLLATE utf8mb4_unicode_ci', $migration);
 });
 
+require __DIR__ . '/registration_summary.php';
+
+test('short links are stable, distinct, resolve correctly and reject invalid codes', function (): void {
+    $db = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $db->exec('CREATE TABLE kegiatan (id INTEGER PRIMARY KEY, attendance_token TEXT)');
+    $db->exec('CREATE TABLE kegiatan_short_links (code TEXT PRIMARY KEY, kegiatan_id INTEGER UNIQUE)');
+    $db->exec("INSERT INTO kegiatan VALUES (1, 'old-token'), (2, NULL)");
+    $first = KegiatanUrlService::legacyShortAttendancePath($db, ['id' => 1]);
+    assertSameValue($first, KegiatanUrlService::legacyShortAttendancePath($db, ['id' => 1]));
+    $second = KegiatanUrlService::legacyShortAttendancePath($db, ['id' => 2]);
+    assertSameValue(false, $first === $second);
+    assertSameValue(19, strlen($first));
+    assertSameValue('old-token', KegiatanUrlService::resolveShortCode($db, substr($first, 3))['attendance_token']);
+    assertSameValue(2, KegiatanUrlService::resolveShortCode($db, substr($second, 3))['id']);
+    assertSameValue(null, KegiatanUrlService::resolveShortCode($db, '../invalid'));
+    $db->exec('DELETE FROM kegiatan WHERE id = 1');
+    assertSameValue(null, KegiatanUrlService::resolveShortCode($db, substr($first, 3)));
+});
+
+require_once dirname(__DIR__) . '/src/Services/KegiatanSchoolService.php';
+test('school lists preserve free text when empty and restrict choices per activity', function (): void {
+    $db = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $db->exec('CREATE TABLE kegiatan_schools (kegiatan_id INTEGER, name TEXT, sort_order INTEGER, PRIMARY KEY(kegiatan_id, name))');
+    assertSameValue(true, KegiatanSchoolService::valid($db, 1, 'Instansi bebas'));
+    KegiatanSchoolService::save($db, 1, " SD A \r\nSMP B\nSD A\n");
+    assertSameValue(['SD A', 'SMP B'], KegiatanSchoolService::options($db, 1));
+    assertSameValue(true, KegiatanSchoolService::valid($db, 1, 'SD A'));
+    assertSameValue(false, KegiatanSchoolService::valid($db, 1, 'Sekolah lain'));
+    KegiatanSchoolService::save($db, 2, 'SMA C');
+    assertSameValue(false, KegiatanSchoolService::valid($db, 2, 'SD A'));
+    KegiatanSchoolService::save($db, 1, 'SD D');
+    assertSameValue(['SD D'], KegiatanSchoolService::options($db, 1));
+    assertSameValue(['SMA C'], KegiatanSchoolService::options($db, 2));
+    KegiatanSchoolService::save($db, 1, '');
+    assertSameValue(true, KegiatanSchoolService::valid($db, 1, 'Instansi bebas'));
+});
+
+test('initial aliases remain stable and handle collisions without breaking old links', function (): void {
+    $db = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $db->exec('CREATE TABLE kegiatan (id INTEGER PRIMARY KEY, attendance_token TEXT)');
+    $db->exec('CREATE TABLE kegiatan_link_aliases (alias TEXT PRIMARY KEY, kegiatan_id INTEGER UNIQUE)');
+    $db->exec('CREATE TABLE kegiatan_short_links (code TEXT PRIMARY KEY, kegiatan_id INTEGER UNIQUE)');
+    $db->exec("INSERT INTO kegiatan VALUES (1, 'token-one'), (2, 'token-two')");
+    $first = ['id' => 1, 'nama_kegiatan' => 'Rapat Koordinasi Sekolah'];
+    $second = ['id' => 2, 'nama_kegiatan' => 'Rapat Koordinasi Sekolah'];
+    $old = KegiatanUrlService::legacyShortAttendancePath($db, $first);
+    assertSameValue('/rks', KegiatanUrlService::shortAttendancePath($db, $first));
+    assertSameValue('/rks-2', KegiatanUrlService::shortAttendancePath($db, $second));
+    $first['nama_kegiatan'] = 'Nama baru';
+    assertSameValue('/rks', KegiatanUrlService::shortAttendancePath($db, $first));
+    assertSameValue(1, KegiatanUrlService::resolveAlias($db, 'rks')['id']);
+    assertSameValue(2, KegiatanUrlService::resolveAlias($db, 'rks-2')['id']);
+    assertSameValue(1, KegiatanUrlService::resolveShortCode($db, substr($old, 3))['id']);
+    assertSameValue(null, KegiatanUrlService::resolveAlias($db, '../invalid'));
+    assertSameValue('s-k', KegiatanUrlService::activityInitials('Seminar'));
+    assertSameValue('login-k', KegiatanUrlService::activityInitials('L O G I N'));
+});
+
 echo "\nResult: {$passed} passed, {$failed} failed.\n";
 exit($failed === 0 ? 0 : 1);

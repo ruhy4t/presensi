@@ -18,3 +18,7 @@ Thumbs.db
 # Database/archive backups must never be committed.
 tests/*_backup.sql
 tests/backup_*.zip
+
+# Local root-level database and application backups.
+/b31_40607902_presensi.sql*.zip
+/backup_presensi.zip

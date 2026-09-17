@@ -126,6 +126,35 @@ class ReportController
         require __DIR__ . '/../Views/print_attendance.php';
     }
 
+    public function printQr($kegiatanId)
+    {
+        global $pdo;
+        $user = AuthMiddleware::user();
+        $stmt = $pdo->prepare('SELECT * FROM kegiatan WHERE id = ?');
+        $stmt->execute([$kegiatanId]);
+        $kegiatan = $stmt->fetch();
+        if (!$kegiatan) {
+            http_response_code(404);
+            echo 'Kegiatan tidak ditemukan.';
+            return;
+        }
+        if ($user['role'] !== 'admin' && $kegiatan['user_id'] != $user['id']) {
+            http_response_code(403);
+            echo 'Akses ditolak.';
+            return;
+        }
+        $waves = [];
+        if ((int) ($kegiatan['gelombang_enabled'] ?? 0) === 1) {
+            $stmt = $pdo->prepare('SELECT nama, tanggal, waktu_mulai, waktu_selesai FROM kegiatan_gelombang WHERE kegiatan_id = ? AND is_active = 1 ORDER BY sort_order, id');
+            $stmt->execute([$kegiatanId]);
+            $waves = $stmt->fetchAll();
+        }
+        require_once __DIR__ . '/../Services/KegiatanUrlService.php';
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $attendanceUrl = $scheme . '://' . $_SERVER['HTTP_HOST'] . KegiatanUrlService::shortAttendancePath($pdo, $kegiatan);
+        require __DIR__ . '/../Views/print_qr.php';
+    }
+
     public function export($kegiatanId)
     {
         global $pdo;
@@ -147,14 +176,14 @@ class ReportController
 
         // 2. Get Attendances
         $stmt2 = $pdo->prepare("
-            SELECT a.*, kg.nama AS gelombang_nama
+            SELECT a.nama, a.instansi, a.jabatan, a.hp, a.confirmation_source,
+                   a.distance_meters, a.accuracy_meters, a.created_at, kg.nama AS gelombang_nama
             FROM attendances a
             LEFT JOIN kegiatan_gelombang kg ON kg.id = a.gelombang_id
             WHERE a.kegiatan_id = ? AND a.record_status = 'active'
             ORDER BY COALESCE(kg.sort_order, 65535), a.created_at ASC
         ");
         $stmt2->execute([$kegiatanId]);
-        $attendanceData = $stmt2->fetchAll();
 
         $format = $_GET['format'] ?? 'csv';
         $filename = "Presensi_" . preg_replace('/[^A-Za-z0-9_\-]/', '_', $kegiatan['nama_kegiatan']) . "_" . date('Ymd');
@@ -165,7 +194,7 @@ class ReportController
             $output = fopen('php://output', 'w');
             fputcsv($output, ['No', 'Nama Lengkap', 'Instansi', 'Jabatan', 'No. HP / WA', 'Gelombang', 'Sumber Konfirmasi', 'Jarak (meter)', 'Akurasi GPS (meter)', 'Waktu Hadir']);
             $no = 1;
-            foreach ($attendanceData as $row) {
+            while ($row = $stmt2->fetch(PDO::FETCH_ASSOC)) {
                 fputcsv($output, [
                     $no++,
                     $row['nama'],
@@ -187,7 +216,7 @@ class ReportController
             echo '<table border="1">';
             echo '<tr><th>No</th><th>Nama Lengkap</th><th>Instansi</th><th>Jabatan</th><th>No. HP / WA</th><th>Gelombang</th><th>Sumber Konfirmasi</th><th>Jarak (meter)</th><th>Akurasi GPS (meter)</th><th>Waktu Hadir</th></tr>';
             $no = 1;
-            foreach ($attendanceData as $row) {
+            while ($row = $stmt2->fetch(PDO::FETCH_ASSOC)) {
                 echo '<tr>';
                 echo '<td>' . $no++ . '</td>';
                 echo '<td>' . htmlspecialchars($row['nama']) . '</td>';

@@ -19,6 +19,7 @@ $needsBiodata = $needsBiodata ?? true;
 $useLegacyAttendance = !$needsBiodata;
 $confirmationOpenLabel = $confirmationOpenLabel ?? 'sekarang';
 $radiusEnabled = $radiusEnabled ?? false;
+$schoolOptions = $schoolOptions ?? [];
 $gelombangOptions = $gelombangOptions ?? [];
 $invitationNumber = trim((string) ($kegiatan['nomor_surat_undangan'] ?? ''));
 $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-';
@@ -80,7 +81,16 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-1">Instansi</label>
-                        <input type="text" x-model="form.instansi" class="field" placeholder="Instansi" required>
+                        <?php if ($schoolOptions !== []): ?>
+                                <select x-model="form.instansi" class="field" required>
+                                    <option value="">Pilih sekolah</option>
+                                    <?php foreach ($schoolOptions as $school): ?>
+                                        <option value="<?= htmlspecialchars($school, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($school, ENT_QUOTES, 'UTF-8') ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            <?php else: ?>
+                                <input type="text" x-model="form.instansi" class="field" placeholder="Instansi" required>
+                            <?php endif; ?>
                     </div>
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-1">Jabatan</label>
@@ -284,7 +294,16 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
                         </div>
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-1">Unit Kerja</label>
-                            <input type="text" x-model="form.unit_kerja" class="field" required>
+                            <?php if ($schoolOptions !== []): ?>
+                                <select x-model="form.unit_kerja" class="field" required>
+                                    <option value="">Pilih sekolah</option>
+                                    <?php foreach ($schoolOptions as $school): ?>
+                                        <option value="<?= htmlspecialchars($school, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($school, ENT_QUOTES, 'UTF-8') ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            <?php else: ?>
+                                <input type="text" x-model="form.unit_kerja" class="field" required>
+                            <?php endif; ?>
                         </div>
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-1">No. Telepon Unit Kerja</label>
@@ -423,11 +442,29 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
                         return;
                     }
                     const ratio = Math.max(window.devicePixelRatio || 1, 1);
-                    canvas.width = canvas.offsetWidth * ratio;
-                    canvas.height = canvas.offsetHeight * ratio;
+                    const width = Math.floor(canvas.offsetWidth * ratio);
+                    const height = Math.floor(canvas.offsetHeight * ratio);
+                    if (canvas.width === width && canvas.height === height && canvas.signatureRatio === ratio) {
+                        return;
+                    }
+                    const strokes = this.signaturePad ? this.signaturePad.toData() : [];
+                    const previousRatio = canvas.signatureRatio || ratio;
+                    const scaleX = (width / ratio) / (canvas.width / previousRatio);
+                    const scaleY = (height / ratio) / (canvas.height / previousRatio);
+                    const scale = Math.min(scaleX, scaleY);
+                    canvas.width = width;
+                    canvas.height = height;
+                    canvas.signatureRatio = ratio;
                     canvas.getContext("2d").scale(ratio, ratio);
                     if (this.signaturePad) {
-                        this.signaturePad.clear();
+                        this.signaturePad.fromData(strokes.map(stroke => ({
+                            ...stroke,
+                            points: stroke.points.map(point => ({
+                                ...point,
+                                x: point.x * scale,
+                                y: point.y * scale
+                            }))
+                        })));
                     }
                 },
 
@@ -438,8 +475,8 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
                     this.signaturePad = new SignaturePad(canvas, {
                         backgroundColor: 'rgba(255, 255, 255, 0)',
                         penColor: this.penColor,
-                        minWidth: 1.5,
-                        maxWidth: 3.5
+                        minWidth: 1.65,
+                        maxWidth: 3.85
                     });
                     setTimeout(() => this.resizeSignatureCanvas(), 50);
                 },
@@ -567,11 +604,29 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
                         return;
                     }
                     const ratio = Math.max(window.devicePixelRatio || 1, 1);
-                    canvas.width = canvas.offsetWidth * ratio;
-                    canvas.height = canvas.offsetHeight * ratio;
+                    const width = Math.floor(canvas.offsetWidth * ratio);
+                    const height = Math.floor(canvas.offsetHeight * ratio);
+                    if (canvas.width === width && canvas.height === height && canvas.signatureRatio === ratio) {
+                        return;
+                    }
+                    const strokes = this.signaturePad ? this.signaturePad.toData() : [];
+                    const previousRatio = canvas.signatureRatio || ratio;
+                    const scaleX = (width / ratio) / (canvas.width / previousRatio);
+                    const scaleY = (height / ratio) / (canvas.height / previousRatio);
+                    const scale = Math.min(scaleX, scaleY);
+                    canvas.width = width;
+                    canvas.height = height;
+                    canvas.signatureRatio = ratio;
                     canvas.getContext("2d").scale(ratio, ratio);
                     if (this.signaturePad) {
-                        this.signaturePad.clear();
+                        this.signaturePad.fromData(strokes.map(stroke => ({
+                            ...stroke,
+                            points: stroke.points.map(point => ({
+                                ...point,
+                                x: point.x * scale,
+                                y: point.y * scale
+                            }))
+                        })));
                     }
                 },
 
@@ -587,8 +642,8 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
                     this.signaturePad = new SignaturePad(canvas, {
                         backgroundColor: 'rgba(255, 255, 255, 0)',
                         penColor: this.penColor,
-                        minWidth: 1.5,
-                        maxWidth: 3.5
+                        minWidth: 1.65,
+                        maxWidth: 3.85
                     });
 
                     setTimeout(() => this.resizeSignatureCanvas(), 50);
@@ -645,7 +700,9 @@ $requiresInvitationNumber = $invitationNumber !== '' && $invitationNumber !== '-
 
                             Object.keys(data.participant).forEach(key => {
                                 if (Object.prototype.hasOwnProperty.call(this.form, key)) {
-                                    this.form[key] = data.participant[key] ?? '';
+                                    const schools = <?= json_encode($schoolOptions, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+                                    const value = data.participant[key] ?? '';
+                                    this.form[key] = key === 'unit_kerja' && schools.length && !schools.includes(value) ? '' : value;
                                 }
                             });
                         })

@@ -5,6 +5,8 @@ require_once __DIR__ . '/../Services/KegiatanStatusService.php';
 require_once __DIR__ . '/../Services/KegiatanUrlService.php';
 require_once __DIR__ . '/../Services/AttendanceLocationService.php';
 require_once __DIR__ . '/../Services/WaveScheduleService.php';
+require_once __DIR__ . '/../Services/RegistrationSummaryService.php';
+require_once __DIR__ . '/../Services/KegiatanSchoolService.php';
 
 class KegiatanController
 {
@@ -26,10 +28,7 @@ class KegiatanController
             if ($user['role'] === 'admin') {
                 $stmt = $pdo->prepare("
                     SELECT k.*, u.fullname as creator_name,
-                           (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id AND a.record_status = 'active') as attendance_count,
-                           (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id) as registration_count,
-                           (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id AND pr.status = 'attended') as confirmed_count,
-                           (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id AND pr.status = 'registered') as unconfirmed_count
+                           (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id AND a.record_status = 'active') as attendance_count
                     FROM kegiatan k
                     LEFT JOIN users u ON k.user_id = u.id
                     WHERE k.status != 'Dihapus'
@@ -39,17 +38,14 @@ class KegiatanController
             } else {
                 $stmt = $pdo->prepare("
                     SELECT k.*,
-                           (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id AND a.record_status = 'active') as attendance_count,
-                           (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id) as registration_count,
-                           (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id AND pr.status = 'attended') as confirmed_count,
-                           (SELECT COUNT(*) FROM participant_registrations pr WHERE pr.kegiatan_id = k.id AND pr.status = 'registered') as unconfirmed_count
+                           (SELECT COUNT(*) FROM attendances a WHERE a.kegiatan_id = k.id AND a.record_status = 'active') as attendance_count
                     FROM kegiatan k
                     WHERE k.user_id = ? AND k.status != 'Dihapus'
                     ORDER BY k.created_at DESC
                 ");
                 $stmt->execute([$user['id']]);
             }
-            return $this->attachGelombangData($stmt->fetchAll());
+            return $this->attachGelombangData(RegistrationSummaryService::attach($pdo, $stmt->fetchAll()));
         } catch (PDOException $e) {
             return [];
         }
@@ -164,7 +160,9 @@ class KegiatanController
                 $gelombang_enabled ? 1 : 0, $catatan ?: null, $pejabat_penanggung_jawab,
                 $jabatan_penanggung_jawab, $nip_penanggung_jawab, $status, $attendanceToken
             ]);
-            $this->syncGelombang((int) $pdo->lastInsertId(), $gelombang_enabled ? $gelombangRows : []);
+            $newId = (int) $pdo->lastInsertId();
+            KegiatanSchoolService::save($pdo, $newId, (string) ($_POST['school_names'] ?? ''));
+            $this->syncGelombang($newId, $gelombang_enabled ? $gelombangRows : []);
             $pdo->commit();
 
             $_SESSION['flash_success'] = "Kegiatan berhasil ditambahkan.";
@@ -300,6 +298,9 @@ class KegiatanController
             $stmt = $pdo->prepare("UPDATE kegiatan SET nama_kegiatan = ?, jenis_kegiatan = ?, nomor_surat_undangan = ?, perlu_biodata = ?, tanggal_pelaksanaan = ?, tanggal_selesai = ?, waktu_pelaksanaan = ?, tempat_pelaksanaan = ?, radius_enabled = ?, latitude = ?, longitude = ?, radius_meters = ?, gelombang_enabled = ?, catatan = ?, pejabat_penanggung_jawab = ?, jabatan_penanggung_jawab = ?, nip_penanggung_jawab = ?$statusSql WHERE id = ?");
             $params[] = $id;
             $stmt->execute($params);
+            if (array_key_exists('school_names', $_POST)) {
+                KegiatanSchoolService::save($pdo, (int) $id, (string) $_POST['school_names']);
+            }
             $this->syncGelombang((int) $id, $gelombang_enabled ? $gelombangRows : []);
             $pdo->commit();
 
@@ -499,14 +500,21 @@ class KegiatanController
         ");
         $stmt->execute($ids);
         $byKegiatan = [];
-        foreach ($stmt->fetchAll() as $wave) {
+        while ($wave = $stmt->fetch(PDO::FETCH_ASSOC)) {
             foreach (['waktu_mulai', 'waktu_selesai', 'presensi_mulai', 'presensi_selesai'] as $field) {
                 $wave[$field] = $wave[$field] !== null ? substr((string) $wave[$field], 0, 5) : '';
             }
             $byKegiatan[(int) $wave['kegiatan_id']][] = $wave;
         }
 
+        $schoolStmt = $pdo->prepare("SELECT kegiatan_id, name FROM kegiatan_schools WHERE kegiatan_id IN ({$placeholders}) ORDER BY sort_order, name");
+        $schoolStmt->execute($ids);
+        $schools = [];
+        while ($school = $schoolStmt->fetch(PDO::FETCH_ASSOC)) {
+            $schools[(int) $school['kegiatan_id']][] = $school['name'];
+        }
         foreach ($kegiatanList as &$kegiatan) {
+            $kegiatan['school_names'] = implode("\n", $schools[(int) $kegiatan['id']] ?? []);
             $waves = $byKegiatan[(int) $kegiatan['id']] ?? [];
             $kegiatan['gelombang_data'] = $waves;
             $kegiatan['gelombang_names'] = implode("\n", array_column($waves, 'nama'));

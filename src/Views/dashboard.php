@@ -35,7 +35,7 @@ function formatTanggalIndo($tgl) {
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $baseUrl = $scheme . '://' . $_SERVER['HTTP_HOST'];
 
-$kegiatanListJson = array_map(function($keg) use ($user) {
+$kegiatanListJson = array_map(function($keg) use ($user, $pdo) {
     return [
         'id' => $keg['id'],
         'nama_kegiatan' => htmlspecialchars($keg['nama_kegiatan'] ?? ''),
@@ -70,11 +70,12 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                 'kuota' => $wave['kuota'] ?? '',
             ];
         }, $keg['gelombang_data'] ?? []),
+        'school_names' => $keg['school_names'] ?? '',
         'catatan' => htmlspecialchars($keg['catatan'] ?? ''),
         'pejabat_penanggung_jawab' => htmlspecialchars($keg['pejabat_penanggung_jawab'] ?? ''),
         'jabatan_penanggung_jawab' => htmlspecialchars($keg['jabatan_penanggung_jawab'] ?? ''),
         'nip_penanggung_jawab' => htmlspecialchars($keg['nip_penanggung_jawab'] ?? ''),
-        'attendance_url' => KegiatanUrlService::attendancePath($keg),
+        'attendance_url' => KegiatanUrlService::shortAttendancePath($pdo, $keg),
         'attendance_count' => (int) ($keg['attendance_count'] ?? 0),
         'registration_count' => (int) ($keg['registration_count'] ?? 0),
         'confirmed_count' => (int) ($keg['confirmed_count'] ?? 0),
@@ -132,7 +133,8 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                 itemsPerPage: 6,
                 showQrModal: false, 
                 qrUrl: '', 
-                qrTitle: '', 
+                qrTitle: '',
+                qrActivityId: null,
                 editData: {},
                 showEditModal: false,
                 get filteredItems() {
@@ -156,7 +158,8 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                     this.editData = keg;
                     this.showEditModal = true;
                 },
-                generateQr(url, title) { 
+                generateQr(url, title, id) {
+                    this.qrActivityId = id;
                     this.qrUrl = url; 
                     this.qrTitle = title; 
                     this.showQrModal = true; 
@@ -280,7 +283,7 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                                                 <button type="submit" class="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><i class="bi bi-archive mr-2"></i>Arsipkan</button>
                                             </form>
 
-                                            <button @click="generateQr('<?= htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8') ?>' + kegiatan.attendance_url, kegiatan.nama_kegiatan)"
+                                            <button @click="generateQr('<?= htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8') ?>' + kegiatan.attendance_url, kegiatan.nama_kegiatan, kegiatan.id)"
                                                 class="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><i class="bi bi-qr-code mr-2"></i>Tampilkan QR Code</button>
                                             <a :href="'/registrations?id=' + kegiatan.id"
                                                 class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><i class="bi bi-person-lines-fill mr-2"></i>Peserta & Token</a>
@@ -404,6 +407,8 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                                 </div>
                             </div>
                             <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                                <a :href="'/report/qr?id=' + qrActivityId" target="_blank" rel="noopener"
+                                    class="mb-2 sm:mb-0 sm:ml-2 inline-flex justify-center rounded-md px-4 py-2 bg-blue-600 text-white font-semibold text-sm">Cetak QR / PDF</a>
                                 <button type="button" @click="showQrModal = false"
                                     class="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm">
                                     Tutup
@@ -570,6 +575,9 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                                 </div>
                             </div>
                             <div class="mb-4">
+                                <label class="block text-gray-700 text-sm font-bold mb-2">Daftar Sekolah (opsional)</label>
+                                <textarea name="school_names" rows="5"  class="w-full border border-gray-300 rounded-lg px-3 py-2" placeholder="Satu nama sekolah per baris"></textarea>
+                                <p class="text-xs text-gray-500 mb-4">Jika diisi, peserta wajib memilih sekolah dari daftar ini pada kolom instansi/unit kerja. Kosongkan untuk isian bebas.</p>
                                 <label class="block text-gray-700 text-sm font-bold mb-2">Catatan Internal</label>
                                 <textarea name="catatan" rows="3"
                                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring focus:border-blue-500"
@@ -755,6 +763,9 @@ $kegiatanListJson = array_map(function($keg) use ($user) {
                                 </div>
                             </div>
                             <div class="mb-4">
+                                <label class="block text-gray-700 text-sm font-bold mb-2">Daftar Sekolah (opsional)</label>
+                                <textarea name="school_names" rows="5" x-model="editData.school_names" class="w-full border border-gray-300 rounded-lg px-3 py-2" placeholder="Satu nama sekolah per baris"></textarea>
+                                <p class="text-xs text-gray-500 mb-4">Jika diisi, peserta wajib memilih sekolah dari daftar ini pada kolom instansi/unit kerja. Kosongkan untuk isian bebas.</p>
                                 <label class="block text-gray-700 text-sm font-bold mb-2">Catatan Internal</label>
                                 <textarea name="catatan" rows="3" x-model="editData.catatan"
                                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring focus:border-blue-500"></textarea>

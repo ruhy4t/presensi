@@ -7,6 +7,9 @@ if (PHP_SAPI !== 'cli') {
     exit;
 }
 
+// Keep headers available while exercising controller response codes in CLI.
+ob_start();
+
 require_once dirname(__DIR__) . '/config/database.php';
 
 $admin = $pdo->query("SELECT id, username, fullname, role FROM users WHERE role = 'admin' AND is_active = 1 LIMIT 1")->fetch();
@@ -210,3 +213,31 @@ if (!str_contains($attendanceHtml, 'Alamat Rumah') || !str_contains($attendanceH
     throw new RuntimeException('Form biodata rentang belum menampilkan alamat rumah atau tanggal selesai.');
 }
 echo "PASS  Form biodata merender alamat rumah dan rentang tanggal.\n";
+
+// QR poster uses the existing attendance URL and enforces activity ownership.
+$qrActivity = $pdo->query('SELECT * FROM kegiatan ORDER BY id LIMIT 1')->fetch();
+if ($qrActivity) {
+    $qrController = new ReportController();
+    ob_start();
+    $qrController->printQr($qrActivity['id']);
+    $qrHtml = ob_get_clean();
+    if (!str_contains($qrHtml, 'Scan di sini untuk konfirmasi kehadiran')
+        || !str_contains($qrHtml, htmlspecialchars($qrActivity['nama_kegiatan'], ENT_QUOTES, 'UTF-8'))
+        || !str_contains($qrHtml, htmlspecialchars(KegiatanUrlService::shortAttendancePath($pdo, $qrActivity), ENT_QUOTES, 'UTF-8'))
+        || !str_contains($qrHtml, 'window.print()')) {
+        throw new RuntimeException('QR poster content or attendance URL is incorrect.');
+    }
+    echo "PASS  Poster QR menampilkan kegiatan dan tautan presensi yang sesuai.\n";
+    $savedSession = $_SESSION;
+    $_SESSION['role'] = 'user';
+    $_SESSION['user_id'] = -1;
+    ob_start();
+    $qrController->printQr($qrActivity['id']);
+    $deniedHtml = ob_get_clean();
+    $_SESSION = $savedSession;
+    if (http_response_code() !== 403 || str_contains($deniedHtml, 'id="qrcode"')) {
+        throw new RuntimeException('QR poster ownership restriction failed.');
+    }
+    http_response_code(200);
+    echo "PASS  Poster QR menolak akses pengguna bukan pemilik.\n";
+}

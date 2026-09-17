@@ -4,6 +4,7 @@ require_once __DIR__ . '/../Services/KegiatanStatusService.php';
 require_once __DIR__ . '/../Services/KegiatanUrlService.php';
 require_once __DIR__ . '/../Services/AttendanceLocationService.php';
 require_once __DIR__ . '/../Services/WaveScheduleService.php';
+require_once __DIR__ . '/../Services/KegiatanSchoolService.php';
 
 class AttendanceController
 {
@@ -64,6 +65,7 @@ class AttendanceController
             $needsBiodata = ($kegiatan['perlu_biodata'] ?? 'Ya') === 'Ya';
             $gelombangOptions = $this->getGelombangOptions((int) $kegiatan['id']);
             $radiusEnabled = AttendanceLocationService::isEnabled($kegiatan);
+            $schoolOptions = KegiatanSchoolService::options($pdo, (int) $kegiatan['id']);
 
             require __DIR__ . '/../Views/attendance_form.php';
         } catch (PDOException $e) {
@@ -273,6 +275,11 @@ class AttendanceController
         $kegiatan = $this->getKegiatan($kegiatanId);
         if (!$kegiatan) {
             $this->jsonError('Kegiatan tidak ditemukan atau sudah ditutup.');
+            return;
+        }
+
+        if (!KegiatanSchoolService::valid($pdo, (int) $kegiatanId, $data['unit_kerja'])) {
+            $this->jsonError('Pilih sekolah dari daftar sekolah kegiatan ini.');
             return;
         }
 
@@ -756,6 +763,11 @@ class AttendanceController
         $kegiatan = $this->getKegiatan($kegiatanId);
         if (!$kegiatan) {
             $this->jsonError('Kegiatan tidak ditemukan atau sudah ditutup.');
+            return;
+        }
+
+        if (!KegiatanSchoolService::valid($pdo, (int) $kegiatanId, $instansi)) {
+            $this->jsonError('Pilih sekolah dari daftar sekolah kegiatan ini.');
             return;
         }
 

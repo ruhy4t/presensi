@@ -28,6 +28,25 @@ $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $scriptName = dirname($_SERVER['SCRIPT_NAME']);
 $route = str_replace($scriptName, '', $uri);
 
+// Short links use the same attendance checks as existing links.
+if (preg_match('#^/s/([a-f0-9]{16})$#D', $uri, $matches)) {
+    require_once __DIR__ . '/../src/Services/KegiatanUrlService.php';
+    $linkedActivity = KegiatanUrlService::resolveShortCode($pdo, $matches[1]);
+    if (!$linkedActivity) {
+        http_response_code(404);
+        echo 'Tautan kegiatan tidak ditemukan.';
+        exit;
+    }
+    require_once __DIR__ . '/../src/Controllers/AttendanceController.php';
+    $controller = new AttendanceController();
+    if (!empty($linkedActivity['attendance_token'])) {
+        $controller->showByToken($linkedActivity['attendance_token']);
+    } else {
+        $controller->show($linkedActivity['id']);
+    }
+    exit;
+}
+
 // Default Route
 if ($route == '/' || $route == '') {
     require __DIR__ . '/../src/Controllers/PublicController.php';
@@ -122,6 +141,11 @@ switch ($route) {
             echo "ID Biodata Diperlukan.";
         }
         break;
+    case '/report/qr':
+        require __DIR__ . '/../src/Controllers/ReportController.php';
+        $controller = new ReportController();
+        $controller->printQr((int) ($_GET['id'] ?? 0));
+        break;
     case '/report/print':
         require __DIR__ . '/../src/Controllers/ReportController.php';
         $controller = new ReportController();
@@ -142,6 +166,20 @@ switch ($route) {
         break;
     // ... Add more routes
     default:
+        if (preg_match('#^/([a-z][a-z0-9-]{0,47})$#D', $uri, $matches)) {
+            require_once __DIR__ . '/../src/Services/KegiatanUrlService.php';
+            $linkedActivity = KegiatanUrlService::resolveAlias($pdo, $matches[1]);
+            if ($linkedActivity) {
+                require_once __DIR__ . '/../src/Controllers/AttendanceController.php';
+                $controller = new AttendanceController();
+                if (!empty($linkedActivity['attendance_token'])) {
+                    $controller->showByToken($linkedActivity['attendance_token']);
+                } else {
+                    $controller->show($linkedActivity['id']);
+                }
+                break;
+            }
+        }
         http_response_code(404);
         echo "404 Not Found";
         break;

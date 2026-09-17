@@ -104,7 +104,7 @@ class RegistrationController
             ");
             $historyStmt->execute($registrationIds);
             $historyByRegistration = [];
-            foreach ($historyStmt->fetchAll() as $history) {
+            while ($history = $historyStmt->fetch(PDO::FETCH_ASSOC)) {
                 $historyByRegistration[(int) $history['registration_id']][] = $history;
             }
             foreach ($registrations as &$registration) {
